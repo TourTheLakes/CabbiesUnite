@@ -110,11 +110,11 @@
       color: #fff;
     }
 
-    .btn.small {
-      min-height: 36px;
-      padding: 8px 12px;
-      font-size: 0.92rem;
-    }
+    .btn.confirm,
+.btn:not(.secondary):not(.danger).small {
+  background: var(--ok);
+  color: #fff;
+}
 
     .status-line {
       margin-top: 18px;
@@ -748,6 +748,7 @@ const firebaseConfig = {
     };
 
     let cachedDrivers = [];
+    let editingDriverId = null;
 
     function normaliseEmail(email) {
       return String(email || "").trim().toLowerCase();
@@ -854,100 +855,146 @@ function isExpired(dateValue) {
     }
 
     function renderDrivers(records) {
-      const term = driverSearch.value.trim().toLowerCase();
+  const term = driverSearch.value.trim().toLowerCase();
 
-      const filtered = records.filter((record) => {
-        if (!term) return true;
-        return [
-          record.fullName,
-          record.googleEmail,
-          record.driverType,
-          record.badgeNumber,
-          record.vehicleNumber,
-          record.vehicleRegistration
-        ].some((v) => String(v || "").toLowerCase().includes(term));
-      });
+  const filtered = records.filter((record) => {
+    if (!term) return true;
+    return [
+      record.fullName,
+      record.googleEmail,
+      record.driverType,
+      record.badgeNumber,
+      record.vehicleNumber,
+      record.vehicleRegistration
+    ].some((v) => String(v || "").toLowerCase().includes(term));
+  });
 
-      if (!filtered.length) {
-        driversList.innerHTML = `<div class="empty-state">No driver records found.</div>`;
-        return;
-      }
+  if (!filtered.length) {
+    driversList.innerHTML = `<div class="empty-state">No driver records found.</div>`;
+    return;
+  }
 
-      driversList.innerHTML = filtered.map((record) => {
-        const suspended = effectiveSuspension(record);
-        const suspensionReason = effectiveSuspensionReason(record);
-        const walletBalance = Number(record.walletBalance || 0).toFixed(2);
-        const pets = record.petsAccepted === "yes" ? "Yes" : "No";
+  driversList.innerHTML = filtered.map((record) => {
+    const suspended = effectiveSuspension(record);
+    const suspensionReason = effectiveSuspensionReason(record);
+    const walletBalance = Number(record.walletBalance || 0).toFixed(2);
+    const pets = record.petsAccepted === "yes" ? "Yes" : "No";
+    const isEditing = editingDriverId === record.id;
 
-        return `
-          <article class="driver-card">
-            <div class="driver-top">
-              <div class="driver-title">
-                <strong>${escapeHtml(record.fullName)}</strong>
-                <span>${escapeHtml(record.googleEmail)}</span>
-              </div>
+    return `
+      <article class="driver-card" data-driver-id="${record.id}">
+        <div class="driver-top">
+          <div class="driver-title">
+            <strong>${escapeHtml(record.fullName)}</strong>
+            <span>${escapeHtml(record.googleEmail)}</span>
+          </div>
 
-              <div class="pill-row">
-                <span class="pill ${record.driverType === "PH" ? "warn" : "ok"}">${escapeHtml(record.driverType)}</span>
-                <span class="pill ${suspended ? "danger" : "ok"}">${suspended ? "Suspended" : "Active"}</span>
-                <span class="pill">Wallet £${walletBalance}</span>
-              </div>
-            </div>
+          <div class="pill-row">
+            <span class="pill ${record.driverType === "PH" ? "warn" : "ok"}">${escapeHtml(record.driverType)}</span>
+            <span class="pill ${suspended ? "danger" : "ok"}">${suspended ? "Suspended" : "Active"}</span>
+            <span class="pill">Wallet £${walletBalance}</span>
+          </div>
+        </div>
 
-            <div class="driver-grid">
-              <div class="mini">
-                <label>Badge</label>
-                <span>${escapeHtml(record.badgeNumber)}</span>
-              </div>
-              <div class="mini">
-                <label>Badge expiry</label>
-                <span>${escapeHtml(record.badgeExpiry)}</span>
-              </div>
-              <div class="mini">
-                <label>Vehicle / door card</label>
-                <span>${escapeHtml(record.vehicleNumber)}</span>
-              </div>
-              <div class="mini">
-                <label>Registration</label>
-                <span>${escapeHtml(record.vehicleRegistration)}</span>
-              </div>
-              <div class="mini">
-                <label>Passenger capacity</label>
-                <span>${escapeHtml(record.passengerCapacity)}</span>
-              </div>
-              <div class="mini">
-                <label>Pets accepted</label>
-                <span>${escapeHtml(pets)}</span>
-              </div>
-              <div class="mini">
-                <label>MOT expiry</label>
-                <span>${escapeHtml(record.motExpiry)}</span>
-              </div>
-              <div class="mini">
-                <label>Vehicle licence expiry</label>
-                <span>${escapeHtml(record.vehicleLicenceExpiry)}</span>
-              </div>
-              <div class="mini">
-                <label>Suspension reason</label>
-                <span>${escapeHtml(suspensionReason || "-")}</span>
-              </div>
-            </div>
+        <div class="driver-grid">
+          <div class="mini">
+            <label>Badge</label>
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="badgeNumber" type="text" value="${escapeHtml(record.badgeNumber)}">`
+                : `<span>${escapeHtml(record.badgeNumber)}</span>`
+            }
+          </div>
 
-            <div class="driver-actions">
-             <button class="btn secondary small" type="button" data-action="edit-driver" data-id="${record.id}">
-               Amend Details
-                </button>
-                    <button class="btn secondary small" type="button" data-action="toggle-suspension" data-id="${record.id}">
-                      ${record.manualSuspended ? "Unsuspend" : "Suspend"}
-                       </button>
-                   <button class="btn secondary small" type="button" data-action="wallet-credit" data-id="${record.id}">
-                     Adjust Wallet
-                      </button>
-                    </div>
-            </article>
-        `;
-      }).join("");
-    }
+          <div class="mini">
+            <label>Badge expiry</label>
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="badgeExpiry" type="text" inputmode="numeric" value="${escapeHtml(record.badgeExpiry)}" placeholder="dd/mm/yyyy">`
+                : `<span>${escapeHtml(record.badgeExpiry)}</span>`
+            }
+          </div>
+
+          <div class="mini">
+            <label>Vehicle / door card</label>
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="vehicleNumber" type="text" value="${escapeHtml(record.vehicleNumber)}">`
+                : `<span>${escapeHtml(record.vehicleNumber)}</span>`
+            }
+          </div>
+
+          <div class="mini">
+            <label>Registration</label>
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="vehicleRegistration" type="text" value="${escapeHtml(record.vehicleRegistration)}">`
+                : `<span>${escapeHtml(record.vehicleRegistration)}</span>`
+            }
+          </div>
+
+          <div class="mini">
+            <label>Passenger capacity</label>
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="passengerCapacity" type="number" min="1" value="${escapeHtml(record.passengerCapacity)}">`
+                : `<span>${escapeHtml(record.passengerCapacity)}</span>`
+            }
+          </div>
+
+          <div class="mini">
+            <label>Pets accepted</label>
+            ${
+              isEditing
+                ? `
+                  <select class="edit-field" data-field="petsAccepted">
+                    <option value="yes" ${record.petsAccepted === "yes" ? "selected" : ""}>Yes</option>
+                    <option value="no" ${record.petsAccepted === "no" ? "selected" : ""}>No</option>
+                  </select>
+                `
+                : `<span>${escapeHtml(pets)}</span>`
+            }
+          </div>
+
+          <div class="mini">
+            <label>MOT expiry</label>
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="motExpiry" type="text" inputmode="numeric" value="${escapeHtml(record.motExpiry)}" placeholder="dd/mm/yyyy">`
+                : `<span>${escapeHtml(record.motExpiry)}</span>`
+            }
+          </div>
+
+          <div class="mini">
+            <label>Vehicle licence expiry</label>
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="vehicleLicenceExpiry" type="text" inputmode="numeric" value="${escapeHtml(record.vehicleLicenceExpiry)}" placeholder="dd/mm/yyyy">`
+                : `<span>${escapeHtml(record.vehicleLicenceExpiry)}</span>`
+            }
+          </div>
+
+          <div class="mini">
+            <label>Suspension reason</label>
+            <span>${escapeHtml(suspensionReason || "-")}</span>
+          </div>
+        </div>
+
+        <div class="driver-actions">
+          <button class="btn ${isEditing ? "" : "secondary"} small" type="button" data-action="${isEditing ? "confirm-edit-driver" : "edit-driver"}" data-id="${record.id}">
+            ${isEditing ? "Confirm" : "Amend Details"}
+          </button>
+          <button class="btn secondary small" type="button" data-action="toggle-suspension" data-id="${record.id}">
+            ${record.manualSuspended ? "Unsuspend" : "Suspend"}
+          </button>
+          <button class="btn secondary small" type="button" data-action="wallet-credit" data-id="${record.id}">
+            Adjust Wallet
+          </button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
 
     async function loadDrivers() {
       driversList.innerHTML = `<div class="empty-state">Loading driver records...</div>`;
@@ -1076,51 +1123,32 @@ function isExpired(dateValue) {
 
   try {
     if (action === "edit-driver") {
-      const fullName = window.prompt("Full name:", record.fullName);
-      if (fullName === null) return;
+      editingDriverId = id;
+      renderDrivers(cachedDrivers);
+      return;
+    }
 
-      const googleEmail = window.prompt("Google email:", record.googleEmail);
-      if (googleEmail === null) return;
+    if (action === "confirm-edit-driver") {
+      const card = actionBtn.closest(".driver-card");
+      if (!card) return;
 
-      const driverType = window.prompt("Driver type (HC or PH):", record.driverType);
-      if (driverType === null) return;
-
-      const badgeNumber = window.prompt("WaF badge number:", record.badgeNumber);
-      if (badgeNumber === null) return;
-
-      const badgeExpiry = window.prompt("Badge expiry (dd/mm/yyyy):", record.badgeExpiry);
-      if (badgeExpiry === null) return;
-
-      const vehicleNumber = window.prompt("Vehicle / door card number:", record.vehicleNumber);
-      if (vehicleNumber === null) return;
-
-      const vehicleRegistration = window.prompt("Vehicle registration:", record.vehicleRegistration);
-      if (vehicleRegistration === null) return;
-
-      const passengerCapacity = window.prompt("Passenger capacity:", String(record.passengerCapacity));
-      if (passengerCapacity === null) return;
-
-      const petsAccepted = window.prompt("Pets accepted (yes or no):", record.petsAccepted);
-      if (petsAccepted === null) return;
-
-      const motExpiry = window.prompt("Vehicle MOT expiry (dd/mm/yyyy):", record.motExpiry);
-      if (motExpiry === null) return;
-
-      const vehicleLicenceExpiry = window.prompt("Vehicle licence expiry (dd/mm/yyyy):", record.vehicleLicenceExpiry);
-      if (vehicleLicenceExpiry === null) return;
+      const getValue = (field) => {
+        const el = card.querySelector(`[data-field="${field}"]`);
+        return el ? String(el.value || "").trim() : "";
+      };
 
       const updated = {
-        fullName: String(fullName).trim(),
-        googleEmail: normaliseEmail(googleEmail),
-        driverType: String(driverType).trim().toUpperCase(),
-        badgeNumber: String(badgeNumber).trim(),
-        badgeExpiry: String(badgeExpiry).trim(),
-        vehicleNumber: String(vehicleNumber).trim(),
-        vehicleRegistration: String(vehicleRegistration).trim().toUpperCase(),
-        passengerCapacity: Number(passengerCapacity),
-        petsAccepted: String(petsAccepted).trim().toLowerCase(),
-        motExpiry: String(motExpiry).trim(),
-        vehicleLicenceExpiry: String(vehicleLicenceExpiry).trim()
+        fullName: record.fullName,
+        googleEmail: record.googleEmail,
+        driverType: record.driverType,
+        badgeNumber: getValue("badgeNumber"),
+        badgeExpiry: getValue("badgeExpiry"),
+        vehicleNumber: getValue("vehicleNumber"),
+        vehicleRegistration: getValue("vehicleRegistration").toUpperCase(),
+        passengerCapacity: Number(getValue("passengerCapacity")),
+        petsAccepted: getValue("petsAccepted").toLowerCase(),
+        motExpiry: getValue("motExpiry"),
+        vehicleLicenceExpiry: getValue("vehicleLicenceExpiry")
       };
 
       const validationError = validateDriverData({
@@ -1143,6 +1171,7 @@ function isExpired(dateValue) {
         lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
       });
 
+      editingDriverId = null;
       await loadDrivers();
       return;
     }
