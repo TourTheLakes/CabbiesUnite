@@ -1222,28 +1222,19 @@ function isExpired(dateValue) {
     }
 
     if (action === "toggle-suspension") {
-      const nextManualSuspended = !record.manualSuspended;
-      let nextReason = record.suspensionReason || "";
+     const nextManualSuspended = !record.manualSuspended;
+     const nextReason = nextManualSuspended ? "Manual suspension - contact support" : "";
 
-      if (nextManualSuspended) {
-        const reason = window.prompt("Enter suspension reason:", nextReason || "Manual suspension");
-        if (reason === null) return;
-        nextReason = reason.trim();
-        if (!nextReason) return;
-      } else {
-        nextReason = "";
-      }
+     await updateDoc(doc(db, "drivers", id), {
+       manualSuspended: nextManualSuspended,
+       suspensionReason: nextReason,
+       updatedAt: serverTimestamp(),
+       lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+     });
 
-      await updateDoc(doc(db, "drivers", id), {
-        manualSuspended: nextManualSuspended,
-        suspensionReason: nextReason,
-        updatedAt: serverTimestamp(),
-        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-      });
-
-      await loadDrivers();
-      return;
-    }
+     await loadDrivers();
+     return;
+   }
 
     if (action === "wallet-credit") {
       const currentBalance = Number(record.walletBalance || 0);
