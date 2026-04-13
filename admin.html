@@ -769,6 +769,7 @@ const firebaseConfig = {
 
     let cachedDrivers = [];
     let editingDriverId = null;
+    let editingWalletId = null;
 
     function normaliseEmail(email) {
       return String(email || "").trim().toLowerCase();
@@ -929,7 +930,10 @@ function isExpired(dateValue) {
                 : `<span class="pill ${record.driverType === "PH" ? "warn" : "ok"}">${escapeHtml(record.driverType)}</span>`
             }
             <span class="pill ${suspended ? "danger" : "ok"}">${suspended ? "Suspended" : "Active"}</span>
-            <span class="pill">Wallet £${walletBalance}</span>
+            ${ editingWalletId === record.id
+    ? `<input class="edit-field pill" data-field="walletBalance" type="number" step="0.01" min="0" value="${walletBalance}">`
+    : `<span class="pill">Wallet £${walletBalance}</span>`
+}
           </div>
         </div>
 
@@ -1024,9 +1028,9 @@ function isExpired(dateValue) {
           <button class="btn secondary small" type="button" data-action="toggle-suspension" data-id="${record.id}">
             ${record.manualSuspended ? "Unsuspend" : "Suspend"}
           </button>
-          <button class="btn secondary small" type="button" data-action="wallet-credit" data-id="${record.id}">
-            Adjust Wallet
-          </button>
+          <button class="btn ${editingWalletId === record.id ? "" : "secondary"} small" type="button" data-action="${editingWalletId === record.id ? "confirm-wallet" : "edit-wallet"}" data-id="${record.id}">
+          ${editingWalletId === record.id ? "Confirm" : "Adjust Wallet"}
+            </button>
         </div>
       </article>
     `;
@@ -1236,29 +1240,36 @@ function isExpired(dateValue) {
      return;
    }
 
-    if (action === "wallet-credit") {
-      const currentBalance = Number(record.walletBalance || 0);
-      const response = window.prompt(
-        `Current wallet balance: £${currentBalance.toFixed(2)}\nEnter the new wallet balance:`,
-        currentBalance.toFixed(2)
-      );
-      if (response === null) return;
+    if (action === "edit-wallet") {
+  editingWalletId = id;
+  renderDrivers(cachedDrivers);
+  return;
+}
 
-      const nextBalance = Number(response);
-      if (!Number.isFinite(nextBalance) || nextBalance < 0) {
-        window.alert("Wallet balance must be 0 or more.");
-        return;
-      }
+if (action === "confirm-wallet") {
+  const card = actionBtn.closest(".driver-card");
+  if (!card) return;
 
-      await updateDoc(doc(db, "drivers", id), {
-        walletBalance: Number(nextBalance.toFixed(2)),
-        updatedAt: serverTimestamp(),
-        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-      });
+  const input = card.querySelector('[data-field="walletBalance"]');
+  if (!input) return;
 
-      await loadDrivers();
-      return;
-    }
+  const nextBalance = Number(input.value);
+
+  if (!Number.isFinite(nextBalance) || nextBalance < 0) {
+    window.alert("Wallet balance must be 0 or more.");
+    return;
+  }
+
+  await updateDoc(doc(db, "drivers", id), {
+    walletBalance: Number(nextBalance.toFixed(2)),
+    updatedAt: serverTimestamp(),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  });
+
+  editingWalletId = null;
+  await loadDrivers();
+  return;
+}
   } catch (error) {
     console.error(error);
     window.alert("Update failed.");
