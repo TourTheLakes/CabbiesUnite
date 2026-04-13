@@ -934,14 +934,17 @@ function isExpired(dateValue) {
             </div>
 
             <div class="driver-actions">
-              <button class="btn secondary small" type="button" data-action="toggle-suspension" data-id="${record.id}">
-                ${record.manualSuspended ? "Unsuspend" : "Suspend"}
-              </button>
-              <button class="btn secondary small" type="button" data-action="wallet-credit" data-id="${record.id}">
-                Adjust Wallet
-              </button>
-            </div>
-          </article>
+             <button class="btn secondary small" type="button" data-action="edit-driver" data-id="${record.id}">
+               Amend Details
+                </button>
+                    <button class="btn secondary small" type="button" data-action="toggle-suspension" data-id="${record.id}">
+                      ${record.manualSuspended ? "Unsuspend" : "Suspend"}
+                       </button>
+                   <button class="btn secondary small" type="button" data-action="wallet-credit" data-id="${record.id}">
+                     Adjust Wallet
+                      </button>
+                    </div>
+            </article>
         `;
       }).join("");
     }
