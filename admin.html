@@ -335,21 +335,29 @@
     }
 
     .drivers-list {
-     display: block;
-     height: 540px;
+     display: flex;
+     flex-direction: column;
+     gap: 0;
+     height: 430px;
      overflow-y: auto;
      overflow-x: hidden;
      padding-right: 6px;
+     scroll-snap-type: y mandatory;
    }
 
+    
+
     .driver-card {
-      background: var(--panel-2);
-      border: 1px solid var(--line);
-      padding: 14px;
-      display: grid;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
+     background: var(--panel-2);
+     border: 1px solid var(--line);
+     padding: 14px;
+     display: grid;
+     gap: 10px;
+     min-height: 430px;
+     height: 430px;
+     scroll-snap-align: start;
+     margin: 0;
+   }
 
     .driver-top {
       display: flex;
