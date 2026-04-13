@@ -499,6 +499,53 @@
      line-height: 1;
    }
 
+    .job-group {
+     border: 1px solid var(--line);
+     background: var(--panel);
+     padding: 14px;
+     display: grid;
+     gap: 10px;
+   }
+
+   .job-header {
+     display: flex;
+     justify-content: space-between;
+     align-items: center;
+     flex-wrap: wrap;
+   }
+
+   .job-title {
+     display: flex;
+     flex-direction: column;
+     gap: 4px;
+   }
+
+   .job-title strong {
+     font-size: 1rem;
+   }
+
+   .job-parts {
+     display: grid;
+     gap: 8px;
+   }
+
+   .job-part {
+     border: 1px solid var(--line);
+     background: var(--panel-2);
+     padding: 10px;
+     display: grid;
+     gap: 6px;
+   }
+
+   .job-row {
+     display: flex;
+     justify-content: space-between;
+     gap: 10px;
+     flex-wrap: wrap;
+     font-size: 0.9rem;
+     color: var(--muted);
+   }
+
     @media (max-width: 1180px) {
       .grid.two {
         grid-template-columns: 1fr;
@@ -693,12 +740,19 @@
       </section>
 
       <section id="section-jobs" class="hidden">
-        <div class="page-header">
-          <h2>Jobs</h2>
-          <p>Phase 1 is view only.</p>
-        </div>
-        <div class="section-placeholder">Jobs view will be layered in after driver management is in place.</div>
-      </section>
+     <div class="page-header">
+       <h2>Jobs</h2>
+       <p>All bookings grouped by job. Compound bookings are shown as a single unit.</p>
+     </div>
+
+     <div class="panel">
+       <div class="toolbar">
+         <button id="refreshJobsBtn" class="btn secondary small" type="button">Refresh</button>
+       </div>
+
+       <div id="jobsList" class="drivers-list"></div>
+     </div>
+   </section>
 
       <section id="section-wallets" class="hidden">
         <div class="page-header">
@@ -800,6 +854,7 @@ const firebaseConfig = {
     let cachedDrivers = [];
     let editingDriverId = null;
     let editingWalletId = null;
+    let cachedJobs = [];
 
     function normaliseEmail(email) {
       return String(email || "").trim().toLowerCase();
@@ -1376,12 +1431,108 @@ if (action === "confirm-wallet") {
       showApp(email);
 
       try {
-        await loadDrivers();
-      } catch (error) {
-        console.error(error);
-        driversList.innerHTML = `<div class="empty-state">Failed to load driver records.</div>`;
-      }
+       await loadDrivers();
+       await loadJobs();
+  } catch (error) {
+       console.error(error);
+       driversList.innerHTML = `<div class="empty-state">Failed to load data.</div>`;
+  }
     });
+
+async function loadJobs() {
+  const jobsList = document.getElementById("jobsList");
+  jobsList.innerHTML = `<div class="empty-state">Loading jobs...</div>`;
+
+  const q = query(collection(db, "jobs"), orderBy("createdAt", "desc"));
+  const snapshot = await getDocs(q);
+
+  cachedJobs = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  renderJobs();
+}
+
+  function renderJobs() {
+  const jobsList = document.getElementById("jobsList");
+
+  if (!cachedJobs.length) {
+    jobsList.innerHTML = `<div class="empty-state">No jobs found.</div>`;
+    return;
+  }
+
+  // group by groupId
+  const groups = {};
+
+  cachedJobs.forEach(job => {
+    const key = job.groupId || job.id;
+
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(job);
+  });
+
+  const html = Object.entries(groups).map(([groupId, parts]) => {
+    const total = parts.length;
+    const acceptedCount = parts.filter(p => p.status === "accepted").length;
+
+    let groupStatus = "Pending";
+    if (acceptedCount > 0 && acceptedCount < total) groupStatus = "Partially Accepted";
+    if (acceptedCount === total) groupStatus = "Confirmed";
+
+    return `
+      <div class="job-group">
+        <div class="job-header">
+          <div class="job-title">
+            <strong>Booking ${groupId}</strong>
+            <span>${groupStatus}</span>
+          </div>
+
+          <div class="pill-row">
+            <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
+          </div>
+        </div>
+
+        <div class="job-parts">
+          ${parts.map((job, index) => {
+            const driver = job.acceptedByDriverId || "—";
+            const feeState = job.feeCharged ? "Charged" : "Pending";
+
+            return `
+              <div class="job-part">
+                <div class="job-row">
+                  <span><strong>Part ${index + 1} / ${total}</strong></span>
+                  <span>${job.status || "pending"}</span>
+                </div>
+
+                <div class="job-row">
+                  <span>${job.passengerCount} passengers</span>
+                  <span>${job.luggageSize || "none"} (${job.luggageCount || 0})</span>
+                </div>
+
+                <div class="job-row">
+                  <span>Driver: ${driver}</span>
+                  <span>Fee: ${feeState}</span>
+                </div>
+
+                <div class="job-row">
+                  <span>${job.pickupAddress || ""}</span>
+                  <span>→</span>
+                  <span>${job.dropoffAddress || ""}</span>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  jobsList.innerHTML = html;
+}
+
+document.getElementById("refreshJobsBtn").addEventListener("click", loadJobs);
+    
   </script>
 </body>
 </html>
