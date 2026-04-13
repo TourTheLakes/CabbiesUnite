@@ -561,7 +561,7 @@
 
               <div class="field">
                 <label for="badgeExpiry">Badge expiry</label>
-                <input id="badgeExpiry" name="badgeExpiry" type="date" required />
+                <input id="badgeExpiry" name="badgeExpiry" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" required />
               </div>
 
               <div class="field">
@@ -590,12 +590,12 @@
 
               <div class="field">
                 <label for="motExpiry">Vehicle MOT expiry</label>
-                <input id="motExpiry" name="motExpiry" type="date" required />
+                <input id="motExpiry" name="motExpiry" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" required />
               </div>
 
               <div class="field">
                 <label for="vehicleLicenceExpiry">Vehicle licence expiry</label>
-                <input id="vehicleLicenceExpiry" name="vehicleLicenceExpiry" type="date" required />
+                <input id="vehicleLicenceExpiry" name="vehicleLicenceExpiry" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" required />
               </div>
 
               <div class="field">
@@ -763,14 +763,49 @@ const firebaseConfig = {
       driverFormMessage.className = type ? `message ${type}` : "message";
     }
 
-    function todayIso() {
-      return new Date().toISOString().slice(0, 10);
-    }
+function todayUk() {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const year = now.getFullYear();
+  return `${day}/${month}/${year}`;
+}
 
-    function isExpired(dateValue) {
-      if (!dateValue) return false;
-      return dateValue < todayIso();
-    }
+function isValidUkDate(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(value || "").trim());
+  if (!match) return false;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
+function ukDateToComparableNumber(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(value || "").trim());
+  if (!match) return null;
+
+  const day = match[1];
+  const month = match[2];
+  const year = match[3];
+
+  return Number(`${year}${month}${day}`);
+}
+
+function isExpired(dateValue) {
+  if (!dateValue || !isValidUkDate(dateValue)) return false;
+
+  const inputValue = ukDateToComparableNumber(dateValue);
+  const todayValue = ukDateToComparableNumber(todayUk());
+
+  return inputValue < todayValue;
+}
 
     function determineAutoSuspended(record) {
       return (
@@ -899,14 +934,17 @@ const firebaseConfig = {
             </div>
 
             <div class="driver-actions">
-              <button class="btn secondary small" type="button" data-action="toggle-suspension" data-id="${record.id}">
+             <button class="btn secondary small" type="button" data-action="edit-driver" data-id="${record.id}">
+               Amend Details
+                </button>
+               <button class="btn secondary small" type="button" data-action="toggle-suspension" data-id="${record.id}">
                 ${record.manualSuspended ? "Unsuspend" : "Suspend"}
-              </button>
-              <button class="btn secondary small" type="button" data-action="wallet-credit" data-id="${record.id}">
-                Adjust Wallet
-              </button>
-            </div>
-          </article>
+                  </button>
+                 <button class="btn secondary small" type="button" data-action="wallet-credit" data-id="${record.id}">
+                    Adjust Wallet
+                    </button>
+                 </div>
+           </article>
         `;
       }).join("");
     }
@@ -961,22 +999,25 @@ const firebaseConfig = {
       };
     }
 
-    function validateDriverData(data) {
-      if (!data.fullName) return "Full name is required.";
-      if (!data.googleEmail) return "Google email is required.";
-      if (!data.driverType) return "Driver type is required.";
-      if (!data.badgeNumber) return "WaF badge number is required.";
-      if (!data.badgeExpiry) return "Badge expiry is required.";
-      if (!data.vehicleNumber) return "Vehicle / door card number is required.";
-      if (!data.vehicleRegistration) return "Vehicle registration is required.";
-      if (!Number.isFinite(data.passengerCapacity) || data.passengerCapacity < 1) return "Passenger capacity must be at least 1.";
-      if (!data.petsAccepted) return "Pets accepted must be selected.";
-      if (!data.motExpiry) return "MOT expiry is required.";
-      if (!data.vehicleLicenceExpiry) return "Vehicle licence expiry is required.";
-      if (!Number.isFinite(data.walletBalance) || data.walletBalance < 0) return "Opening wallet credit cannot be negative.";
-      if (data.manualSuspended && !data.suspensionReason) return "Suspension reason is required when manually suspended.";
-      return "";
-    }
+function validateDriverData(data) {
+  if (!data.fullName) return "Full name is required.";
+  if (!data.googleEmail) return "Google email is required.";
+  if (!data.driverType) return "Driver type is required.";
+  if (!data.badgeNumber) return "WaF badge number is required.";
+  if (!data.badgeExpiry) return "Badge expiry is required.";
+  if (!data.vehicleNumber) return "Vehicle / door card number is required.";
+  if (!data.vehicleRegistration) return "Vehicle registration is required.";
+  if (!Number.isFinite(data.passengerCapacity) || data.passengerCapacity < 1) return "Passenger capacity must be at least 1.";
+  if (!data.petsAccepted) return "Pets accepted must be selected.";
+  if (!data.motExpiry) return "MOT expiry is required.";
+  if (!data.vehicleLicenceExpiry) return "Vehicle licence expiry is required.";
+  if (!Number.isFinite(data.walletBalance) || data.walletBalance < 0) return "Opening wallet credit cannot be negative.";
+  if (data.manualSuspended && !data.suspensionReason) return "Suspension reason is required when manually suspended.";
+  if (!isValidUkDate(data.badgeExpiry)) return "Badge expiry must be in dd/mm/yyyy format.";
+  if (!isValidUkDate(data.motExpiry)) return "MOT expiry must be in dd/mm/yyyy format.";
+  if (!isValidUkDate(data.vehicleLicenceExpiry)) return "Vehicle licence expiry must be in dd/mm/yyyy format.";
+  return "";
+}
 
     async function createDriverRecord(event) {
       event.preventDefault();
@@ -1024,101 +1065,140 @@ const firebaseConfig = {
       }
     }
 
-    async function handleDriverListClick(event) {
-      const actionBtn = event.target.closest("button[data-action]");
-      if (!actionBtn) return;
+async function handleDriverListClick(event) {
+  const actionBtn = event.target.closest("button[data-action]");
+  if (!actionBtn) return;
 
-      const action = actionBtn.dataset.action;
-      const id = actionBtn.dataset.id;
-      const record = cachedDrivers.find((d) => d.id === id);
-      if (!record) return;
+  const action = actionBtn.dataset.action;
+  const id = actionBtn.dataset.id;
+  const record = cachedDrivers.find((d) => d.id === id);
+  if (!record) return;
 
-      try {
-        if (action === "toggle-suspension") {
-          const nextManualSuspended = !record.manualSuspended;
-          let nextReason = record.suspensionReason || "";
+  try {
+    if (action === "edit-driver") {
+      const fullName = window.prompt("Full name:", record.fullName);
+      if (fullName === null) return;
 
-          if (nextManualSuspended) {
-            const reason = window.prompt("Enter suspension reason:", nextReason || "Manual suspension");
-            if (reason === null) return;
-            nextReason = reason.trim();
-            if (!nextReason) return;
-          } else {
-            nextReason = "";
-          }
+      const googleEmail = window.prompt("Google email:", record.googleEmail);
+      if (googleEmail === null) return;
 
-          await updateDoc(doc(db, "drivers", id), {
-            manualSuspended: nextManualSuspended,
-            suspensionReason: nextReason,
-            updatedAt: serverTimestamp(),
-            lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-          });
+      const driverType = window.prompt("Driver type (HC or PH):", record.driverType);
+      if (driverType === null) return;
 
-          await loadDrivers();
-          return;
-        }
+      const badgeNumber = window.prompt("WaF badge number:", record.badgeNumber);
+      if (badgeNumber === null) return;
 
-        if (action === "wallet-credit") {
-          const currentBalance = Number(record.walletBalance || 0);
-          const response = window.prompt(`Current wallet balance: £${currentBalance.toFixed(2)}\nEnter the new wallet balance:`, currentBalance.toFixed(2));
-          if (response === null) return;
+      const badgeExpiry = window.prompt("Badge expiry (dd/mm/yyyy):", record.badgeExpiry);
+      if (badgeExpiry === null) return;
 
-          const nextBalance = Number(response);
-          if (!Number.isFinite(nextBalance) || nextBalance < 0) {
-            window.alert("Wallet balance must be 0 or more.");
-            return;
-          }
+      const vehicleNumber = window.prompt("Vehicle / door card number:", record.vehicleNumber);
+      if (vehicleNumber === null) return;
 
-          await updateDoc(doc(db, "drivers", id), {
-            walletBalance: Number(nextBalance.toFixed(2)),
-            updatedAt: serverTimestamp(),
-            lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-          });
+      const vehicleRegistration = window.prompt("Vehicle registration:", record.vehicleRegistration);
+      if (vehicleRegistration === null) return;
 
-          await loadDrivers();
-        }
-      } catch (error) {
-        console.error(error);
-        window.alert("Update failed.");
-      }
-    }
+      const passengerCapacity = window.prompt("Passenger capacity:", String(record.passengerCapacity));
+      if (passengerCapacity === null) return;
 
-    async function signInAdmin() {
-      setLoginStatus("Signing in...");
-      try {
-        const result = await signInWithPopup(auth, provider);
-        const email = normaliseEmail(result.user?.email);
+      const petsAccepted = window.prompt("Pets accepted (yes or no):", record.petsAccepted);
+      if (petsAccepted === null) return;
 
-        if (email !== ALLOWED_ADMIN_EMAIL) {
-          await signOut(auth);
-          setLoginStatus("This Google account is not authorised for admin access.", true);
-          return;
-        }
+      const motExpiry = window.prompt("Vehicle MOT expiry (dd/mm/yyyy):", record.motExpiry);
+      if (motExpiry === null) return;
 
-        setLoginStatus("");
-      } catch (error) {
-        console.error(error);
-        setLoginStatus("Google sign-in failed.", true);
-      }
-    }
+      const vehicleLicenceExpiry = window.prompt("Vehicle licence expiry (dd/mm/yyyy):", record.vehicleLicenceExpiry);
+      if (vehicleLicenceExpiry === null) return;
 
-    async function signOutAdmin() {
-      await signOut(auth);
-    }
+      const updated = {
+        fullName: String(fullName).trim(),
+        googleEmail: normaliseEmail(googleEmail),
+        driverType: String(driverType).trim().toUpperCase(),
+        badgeNumber: String(badgeNumber).trim(),
+        badgeExpiry: String(badgeExpiry).trim(),
+        vehicleNumber: String(vehicleNumber).trim(),
+        vehicleRegistration: String(vehicleRegistration).trim().toUpperCase(),
+        passengerCapacity: Number(passengerCapacity),
+        petsAccepted: String(petsAccepted).trim().toLowerCase(),
+        motExpiry: String(motExpiry).trim(),
+        vehicleLicenceExpiry: String(vehicleLicenceExpiry).trim()
+      };
 
-    function bindNav() {
-      navButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const target = btn.dataset.section;
-
-          navButtons.forEach((b) => b.classList.toggle("active", b === btn));
-
-          Object.entries(sections).forEach(([key, node]) => {
-            node.classList.toggle("hidden", key !== target);
-          });
-        });
+      const validationError = validateDriverData({
+        ...record,
+        ...updated,
+        walletBalance: Number(record.walletBalance || 0),
+        manualSuspended: Boolean(record.manualSuspended),
+        suspensionReason: String(record.suspensionReason || "")
       });
+
+      if (validationError) {
+        window.alert(validationError);
+        return;
+      }
+
+      await updateDoc(doc(db, "drivers", id), {
+        ...updated,
+        autoSuspended: determineAutoSuspended(updated),
+        updatedAt: serverTimestamp(),
+        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+      });
+
+      await loadDrivers();
+      return;
     }
+
+    if (action === "toggle-suspension") {
+      const nextManualSuspended = !record.manualSuspended;
+      let nextReason = record.suspensionReason || "";
+
+      if (nextManualSuspended) {
+        const reason = window.prompt("Enter suspension reason:", nextReason || "Manual suspension");
+        if (reason === null) return;
+        nextReason = reason.trim();
+        if (!nextReason) return;
+      } else {
+        nextReason = "";
+      }
+
+      await updateDoc(doc(db, "drivers", id), {
+        manualSuspended: nextManualSuspended,
+        suspensionReason: nextReason,
+        updatedAt: serverTimestamp(),
+        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+      });
+
+      await loadDrivers();
+      return;
+    }
+
+    if (action === "wallet-credit") {
+      const currentBalance = Number(record.walletBalance || 0);
+      const response = window.prompt(
+        `Current wallet balance: £${currentBalance.toFixed(2)}\nEnter the new wallet balance:`,
+        currentBalance.toFixed(2)
+      );
+      if (response === null) return;
+
+      const nextBalance = Number(response);
+      if (!Number.isFinite(nextBalance) || nextBalance < 0) {
+        window.alert("Wallet balance must be 0 or more.");
+        return;
+      }
+
+      await updateDoc(doc(db, "drivers", id), {
+        walletBalance: Number(nextBalance.toFixed(2)),
+        updatedAt: serverTimestamp(),
+        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+      });
+
+      await loadDrivers();
+      return;
+    }
+  } catch (error) {
+    console.error(error);
+    window.alert("Update failed.");
+  }
+}
 
     googleSignInBtn.addEventListener("click", signInAdmin);
     signOutBtn.addEventListener("click", signOutAdmin);
