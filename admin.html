@@ -1000,21 +1000,24 @@ function isExpired(dateValue) {
     }
 
     function validateDriverData(data) {
-      if (!data.fullName) return "Full name is required.";
-      if (!data.googleEmail) return "Google email is required.";
-      if (!data.driverType) return "Driver type is required.";
-      if (!data.badgeNumber) return "WaF badge number is required.";
-      if (!data.badgeExpiry) return "Badge expiry is required.";
-      if (!data.vehicleNumber) return "Vehicle / door card number is required.";
-      if (!data.vehicleRegistration) return "Vehicle registration is required.";
-      if (!Number.isFinite(data.passengerCapacity) || data.passengerCapacity < 1) return "Passenger capacity must be at least 1.";
-      if (!data.petsAccepted) return "Pets accepted must be selected.";
-      if (!data.motExpiry) return "MOT expiry is required.";
-      if (!data.vehicleLicenceExpiry) return "Vehicle licence expiry is required.";
-      if (!Number.isFinite(data.walletBalance) || data.walletBalance < 0) return "Opening wallet credit cannot be negative.";
-      if (data.manualSuspended && !data.suspensionReason) return "Suspension reason is required when manually suspended.";
-      return "";
-    }
+  if (!data.fullName) return "Full name is required.";
+  if (!data.googleEmail) return "Google email is required.";
+  if (!data.driverType) return "Driver type is required.";
+  if (!data.badgeNumber) return "WaF badge number is required.";
+  if (!data.badgeExpiry) return "Badge expiry is required.";
+  if (!data.vehicleNumber) return "Vehicle / door card number is required.";
+  if (!data.vehicleRegistration) return "Vehicle registration is required.";
+  if (!Number.isFinite(data.passengerCapacity) || data.passengerCapacity < 1) return "Passenger capacity must be at least 1.";
+  if (!data.petsAccepted) return "Pets accepted must be selected.";
+  if (!data.motExpiry) return "MOT expiry is required.";
+  if (!data.vehicleLicenceExpiry) return "Vehicle licence expiry is required.";
+  if (!Number.isFinite(data.walletBalance) || data.walletBalance < 0) return "Opening wallet credit cannot be negative.";
+  if (data.manualSuspended && !data.suspensionReason) return "Suspension reason is required when manually suspended.";
+  if (!isValidUkDate(data.badgeExpiry)) return "Badge expiry must be in dd/mm/yyyy format.";
+  if (!isValidUkDate(data.motExpiry)) return "MOT expiry must be in dd/mm/yyyy format.";
+  if (!isValidUkDate(data.vehicleLicenceExpiry)) return "Vehicle licence expiry must be in dd/mm/yyyy format.";
+  return "";
+}
 
     async function createDriverRecord(event) {
       event.preventDefault();
