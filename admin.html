@@ -111,10 +111,10 @@
     }
 
     .btn.confirm,
-.btn:not(.secondary):not(.danger).small {
-  background: var(--ok);
-  color: #fff;
-}
+    .btn:not(.secondary):not(.danger).small {
+      background: var(--ok);
+      color: #fff;
+    }
 
     .status-line {
       margin-top: 18px;
@@ -468,6 +468,27 @@
       color: var(--muted);
       line-height: 1.6;
     }
+
+    .edit-field {
+     width: 100%;
+     background: #0f0f0f;
+     color: var(--text);
+     border: 1px solid var(--line);
+     padding: 10px;
+     min-height: 36px;
+   }
+
+   .edit-field:focus {
+     outline: none;
+     border-color: var(--text);
+   }
+
+    .edit-field select,
+     select.edit-field {
+     background: #0f0f0f;
+     color: var(--text);
+     border: 1px solid var(--line);
+   }
 
     @media (max-width: 1180px) {
       .grid.two {
