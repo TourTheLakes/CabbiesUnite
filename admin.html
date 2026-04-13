@@ -240,6 +240,7 @@
       background: var(--panel);
       border: 1px solid var(--line);
       padding: 18px;
+      min-height: 0;
     }
 
     .panel h3 {
@@ -334,12 +335,12 @@
     }
 
     .drivers-list {
-      display: grid;
-      gap: 12px;
-      max-height: 70vh;
-      overflow: auto;
-      padding-right: 4px;
-    }
+     display: block;
+     height: 540px;
+     overflow-y: auto;
+     overflow-x: hidden;
+     padding-right: 6px;
+   }
 
     .driver-card {
       background: var(--panel-2);
@@ -347,6 +348,7 @@
       padding: 14px;
       display: grid;
       gap: 10px;
+      margin-bottom: 16px;
     }
 
     .driver-top {
