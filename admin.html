@@ -474,8 +474,10 @@
      background: #0f0f0f;
      color: var(--text);
      border: 1px solid var(--line);
-     padding: 10px;
-     min-height: 36px;
+     padding: 6px 8px;
+     height: 30px;
+     min-height: 30px;
+     font-size: 0.9rem;
    }
 
    .edit-field:focus {
@@ -490,11 +492,10 @@
      border: 1px solid var(--line);
    }
 
-    .edit-field select,
-     select.edit-field {
-     background: #0f0f0f;
-     color: var(--text);
-     border: 1px solid var(--line);
+    .edit-field[type="number"],
+    .edit-field[type="text"],
+    .edit-field[type="email"] {
+     line-height: 1;
    }
 
     @media (max-width: 1180px) {
