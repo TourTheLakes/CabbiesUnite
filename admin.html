@@ -763,14 +763,49 @@ const firebaseConfig = {
       driverFormMessage.className = type ? `message ${type}` : "message";
     }
 
-    function todayIso() {
-      return new Date().toISOString().slice(0, 10);
-    }
+function todayUk() {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const year = now.getFullYear();
+  return `${day}/${month}/${year}`;
+}
 
-    function isExpired(dateValue) {
-      if (!dateValue) return false;
-      return dateValue < todayIso();
-    }
+function isValidUkDate(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(value || "").trim());
+  if (!match) return false;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
+function ukDateToComparableNumber(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(value || "").trim());
+  if (!match) return null;
+
+  const day = match[1];
+  const month = match[2];
+  const year = match[3];
+
+  return Number(`${year}${month}${day}`);
+}
+
+function isExpired(dateValue) {
+  if (!dateValue || !isValidUkDate(dateValue)) return false;
+
+  const inputValue = ukDateToComparableNumber(dateValue);
+  const todayValue = ukDateToComparableNumber(todayUk());
+
+  return inputValue < todayValue;
+}
 
     function determineAutoSuspended(record) {
       return (
