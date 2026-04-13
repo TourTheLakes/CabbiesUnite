@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-D6Z4RRNPJS"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-D6Z4RRNPJS');
+  </script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cabbies Unite Admin</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel: #151515;
+      --panel-2: #1e1e1e;
+      --line: #2c2c2c;
+      --text: #d9d2c4;
+      --muted: #9c9489;
+      --danger: #c15f5f;
+      --ok: #7fa37f;
+      --warn: #b89b52;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      min-height: 100%;
+    }
+
+    body {
+      min-height: 100vh;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .login-screen {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 28px;
+    }
+
+    .login-card h1 {
+      font-size: 2rem;
+      margin-bottom: 12px;
+      letter-spacing: 0.04em;
+    }
+
+    .login-card p {
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: var(--text);
+      color: #000;
+      border: none;
+      cursor: pointer;
+      padding: 12px 18px;
+      min-height: 44px;
+    }
+
+    .btn:hover {
+      opacity: 0.92;
+    }
+
+    .btn.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    .btn.danger {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .btn.small {
+      min-height: 36px;
+      padding: 8px 12px;
+      font-size: 0.92rem;
+    }
+
+    .status-line {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .status-line.error {
+      color: #f1a0a0;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      grid-template-rows: 72px 1fr;
+      grid-template-areas:
+        "topbar topbar"
+        "sidebar main";
+    }
+
+    .topbar {
+      grid-area: topbar;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 0 20px;
+      background: #111;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .brand strong {
+      font-size: 1.3rem;
+      letter-spacing: 0.04em;
+    }
+
+    .brand span {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .topbar-right .account {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .sidebar {
+      grid-area: sidebar;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 18px 14px;
+    }
+
+    .nav-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .nav-btn {
+      width: 100%;
+      text-align: left;
+      padding: 12px 14px;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+
+    .nav-btn:hover,
+    .nav-btn.active {
+      background: var(--panel-2);
+      border-color: var(--line);
+    }
+
+    .main {
+      grid-area: main;
+      padding: 20px;
+    }
+
+    .page-header {
+      margin-bottom: 20px;
+    }
+
+    .page-header h2 {
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+      letter-spacing: 0.03em;
+    }
+
+    .page-header p {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .grid {
+      display: grid;
+      gap: 20px;
+    }
+
+    .grid.two {
+      grid-template-columns: minmax(340px, 460px) 1fr;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 18px;
+    }
+
+    .panel h3 {
+      font-size: 1.05rem;
+      margin-bottom: 16px;
+      letter-spacing: 0.03em;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      background: #0f0f0f;
+      color: var(--text);
+      border: 1px solid var(--line);
+      padding: 12px;
+      min-height: 44px;
+    }
+
+    .field textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    .form-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding-top: 6px;
+    }
+
+    .helper {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    .message {
+      margin-top: 14px;
+      min-height: 22px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .message.error {
+      color: #f1a0a0;
+    }
+
+    .message.success {
+      color: #a7d2a7;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .toolbar input {
+      flex: 1 1 260px;
+      min-width: 0;
+      background: #0f0f0f;
+      color: var(--text);
+      border: 1px solid var(--line);
+      padding: 12px;
+      min-height: 44px;
+    }
+
+    .drivers-list {
+      display: grid;
+      gap: 12px;
+      max-height: 70vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .driver-card {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .driver-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .driver-title {
+      display: grid;
+      gap: 4px;
+    }
+
+    .driver-title strong {
+      font-size: 1rem;
+      letter-spacing: 0.02em;
+    }
+
+    .driver-title span {
+      color: var(--muted);
+      font-size: 0.9rem;
+      word-break: break-word;
+    }
+
+    .pill-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.85rem;
+      background: #101010;
+    }
+
+    .pill.ok {
+      color: #a7d2a7;
+      border-color: rgba(127, 163, 127, 0.35);
+    }
+
+    .pill.warn {
+      color: #d8c18a;
+      border-color: rgba(184, 155, 82, 0.35);
+    }
+
+    .pill.danger {
+      color: #f1a0a0;
+      border-color: rgba(193, 95, 95, 0.35);
+    }
+
+    .driver-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .mini {
+      background: #101010;
+      border: 1px solid var(--line);
+      padding: 10px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .mini label {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .mini span {
+      font-size: 0.92rem;
+      word-break: break-word;
+    }
+
+    .driver-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .empty-state {
+      color: var(--muted);
+      padding: 20px 0;
+      line-height: 1.5;
+    }
+
+    .section-placeholder {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 18px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    @media (max-width: 1180px) {
+      .grid.two {
+        grid-template-columns: 1fr;
+      }
+
+      .driver-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: 72px auto 1fr;
+        grid-template-areas:
+          "topbar"
+          "sidebar"
+          "main";
+      }
+
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .nav-group {
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+
+      .nav-btn {
+        width: auto;
+      }
+
+      .form-grid,
+      .driver-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <h1>Cabbies Unite</h1>
+      <p>Admin access is restricted to the authorised Google account only.</p>
+      <button id="googleSignInBtn" class="btn" type="button">Sign in with Google</button>
+      <div id="loginStatus" class="status-line"></div>
+    </div>
+  </section>
+
+  <section id="appShell" class="app-shell hidden">
+    <header class="topbar">
+      <div class="brand">
+        <strong>Cabbies Unite</strong>
+        <span>Admin Control Panel</span>
+      </div>
+      <div class="topbar-right">
+        <div class="account">Logged in as <span id="loggedInEmail">-</span></div>
+        <button id="signOutBtn" class="btn secondary small" type="button">Log Off</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <nav class="nav-group">
+        <button class="nav-btn active" data-section="drivers" type="button">Drivers</button>
+        <button class="nav-btn" data-section="jobs" type="button">Jobs</button>
+        <button class="nav-btn" data-section="wallets" type="button">Wallets</button>
+        <button class="nav-btn" data-section="penalties" type="button">Penalties</button>
+        <button class="nav-btn" data-section="documents" type="button">Documents</button>
+        <button class="nav-btn" data-section="settings" type="button">Settings</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <section id="section-drivers">
+        <div class="page-header">
+          <h2>Drivers</h2>
+          <p>Create and manage flat driver records. Wallet starts at 0 automatically. Accounts suspend automatically when required document dates expire.</p>
+        </div>
+
+        <div class="grid two">
+          <div class="panel">
+            <h3>Create Driver</h3>
+
+            <form id="driverForm" class="form-grid">
+              <div class="field full">
+                <label for="fullName">Full name</label>
+                <input id="fullName" name="fullName" type="text" required />
+              </div>
+
+              <div class="field full">
+                <label for="googleEmail">Google email</label>
+                <input id="googleEmail" name="googleEmail" type="email" required />
+              </div>
+
+              <div class="field">
+                <label for="driverType">Driver type</label>
+                <select id="driverType" name="driverType" required>
+                  <option value="">Select</option>
+                  <option value="HC">HC</option>
+                  <option value="PH">PH</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="badgeNumber">WaF badge number</label>
+                <input id="badgeNumber" name="badgeNumber" type="text" required />
+              </div>
+
+              <div class="field">
+                <label for="badgeExpiry">Badge expiry</label>
+                <input id="badgeExpiry" name="badgeExpiry" type="date" required />
+              </div>
+
+              <div class="field">
+                <label for="vehicleNumber">Vehicle / door card number</label>
+                <input id="vehicleNumber" name="vehicleNumber" type="text" required />
+              </div>
+
+              <div class="field">
+                <label for="vehicleRegistration">Vehicle registration</label>
+                <input id="vehicleRegistration" name="vehicleRegistration" type="text" required />
+              </div>
+
+              <div class="field">
+                <label for="passengerCapacity">Passenger capacity</label>
+                <input id="passengerCapacity" name="passengerCapacity" type="number" min="1" required />
+              </div>
+
+              <div class="field">
+                <label for="petsAccepted">Pets accepted</label>
+                <select id="petsAccepted" name="petsAccepted" required>
+                  <option value="">Select</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="motExpiry">Vehicle MOT expiry</label>
+                <input id="motExpiry" name="motExpiry" type="date" required />
+              </div>
+
+              <div class="field">
+                <label for="vehicleLicenceExpiry">Vehicle licence expiry</label>
+                <input id="vehicleLicenceExpiry" name="vehicleLicenceExpiry" type="date" required />
+              </div>
+
+              <div class="field">
+                <label for="startingWalletCredit">Opening wallet credit</label>
+                <input id="startingWalletCredit" name="startingWalletCredit" type="number" min="0" step="0.01" value="0" required />
+              </div>
+
+              <div class="field">
+                <label for="manualSuspended">Suspended</label>
+                <select id="manualSuspended" name="manualSuspended" required>
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </div>
+
+              <div class="field full">
+                <label for="suspensionReason">Suspension reason</label>
+                <textarea id="suspensionReason" name="suspensionReason" placeholder="Leave blank if not suspended."></textarea>
+              </div>
+
+              <div class="form-actions">
+                <button class="btn" type="submit">Create Driver</button>
+                <button id="resetDriverFormBtn" class="btn secondary" type="button">Clear Form</button>
+              </div>
+            </form>
+
+            <div class="helper">
+              Driver records are flat. Wallet opens at 0 unless you manually set a starting credit. Automatic suspension is based on badge, MOT, and vehicle licence expiry.
+            </div>
+
+            <div id="driverFormMessage" class="message"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Driver Records</h3>
+
+            <div class="toolbar">
+              <input id="driverSearch" type="search" placeholder="Search by name, email, registration, badge or vehicle number" />
+              <button id="refreshDriversBtn" class="btn secondary small" type="button">Refresh</button>
+            </div>
+
+            <div id="driversList" class="drivers-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-jobs" class="hidden">
+        <div class="page-header">
+          <h2>Jobs</h2>
+          <p>Phase 1 is view only.</p>
+        </div>
+        <div class="section-placeholder">Jobs view will be layered in after driver management is in place.</div>
+      </section>
+
+      <section id="section-wallets" class="hidden">
+        <div class="page-header">
+          <h2>Wallets</h2>
+          <p>Phase 1 wallet inspection and adjustments will be layered next.</p>
+        </div>
+        <div class="section-placeholder">Wallet tools not yet built in this first pass.</div>
+      </section>
+
+      <section id="section-penalties" class="hidden">
+        <div class="page-header">
+          <h2>Penalties</h2>
+          <p>Penalty inspection will be layered after job handling is in place.</p>
+        </div>
+        <div class="section-placeholder">Penalties view not yet built in this first pass.</div>
+      </section>
+
+      <section id="section-documents" class="hidden">
+        <div class="page-header">
+          <h2>Documents</h2>
+          <p>Expiry monitoring is already included in flat records. Document management can be layered later.</p>
+        </div>
+        <div class="section-placeholder">Documents section not yet built in this first pass.</div>
+      </section>
+
+      <section id="section-settings" class="hidden">
+        <div class="page-header">
+          <h2>Settings</h2>
+          <p>System settings will be layered later.</p>
+        </div>
+        <div class="section-placeholder">Settings section not yet built in this first pass.</div>
+      </section>
+    </main>
+  </section>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      getDocs,
+      query,
+      orderBy,
+      serverTimestamp,
+      doc,
+      updateDoc
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDzOY5kRe_NWwdr-Lz4CZlZJlbbqSQAvVE",
+  authDomain: "cabbiesunite.firebaseapp.com",
+  databaseURL: "https://cabbiesunite-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "cabbiesunite",
+  storageBucket: "cabbiesunite.firebasestorage.app",
+  messagingSenderId: "446067528978",
+  appId: "1:446067528978:web:b38aad3a1484e65be90fcb",
+  measurementId: "G-81FV3FJ2LE"
+};
+
+    const ALLOWED_ADMIN_EMAIL = "info@neonforge.co.uk";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    const loginScreen = document.getElementById("loginScreen");
+    const appShell = document.getElementById("appShell");
+    const googleSignInBtn = document.getElementById("googleSignInBtn");
+    const signOutBtn = document.getElementById("signOutBtn");
+    const loginStatus = document.getElementById("loginStatus");
+    const loggedInEmail = document.getElementById("loggedInEmail");
+
+    const driverForm = document.getElementById("driverForm");
+    const driverFormMessage = document.getElementById("driverFormMessage");
+    const resetDriverFormBtn = document.getElementById("resetDriverFormBtn");
+    const driverSearch = document.getElementById("driverSearch");
+    const refreshDriversBtn = document.getElementById("refreshDriversBtn");
+    const driversList = document.getElementById("driversList");
+
+    const navButtons = [...document.querySelectorAll(".nav-btn")];
+    const sections = {
+      drivers: document.getElementById("section-drivers"),
+      jobs: document.getElementById("section-jobs"),
+      wallets: document.getElementById("section-wallets"),
+      penalties: document.getElementById("section-penalties"),
+      documents: document.getElementById("section-documents"),
+      settings: document.getElementById("section-settings")
+    };
+
+    let cachedDrivers = [];
+
+    function normaliseEmail(email) {
+      return String(email || "").trim().toLowerCase();
+    }
+
+    function setLoginStatus(text, isError = false) {
+      loginStatus.textContent = text || "";
+      loginStatus.className = isError ? "status-line error" : "status-line";
+    }
+
+    function setFormMessage(text, type = "") {
+      driverFormMessage.textContent = text || "";
+      driverFormMessage.className = type ? `message ${type}` : "message";
+    }
+
+    function todayIso() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function isExpired(dateValue) {
+      if (!dateValue) return false;
+      return dateValue < todayIso();
+    }
+
+    function determineAutoSuspended(record) {
+      return (
+        isExpired(record.badgeExpiry) ||
+        isExpired(record.motExpiry) ||
+        isExpired(record.vehicleLicenceExpiry)
+      );
+    }
+
+    function effectiveSuspension(record) {
+      return Boolean(record.manualSuspended || determineAutoSuspended(record));
+    }
+
+    function effectiveSuspensionReason(record) {
+      if (record.manualSuspended) {
+        return record.suspensionReason || "Manually suspended";
+      }
+
+      const reasons = [];
+      if (isExpired(record.badgeExpiry)) reasons.push("Badge expired");
+      if (isExpired(record.motExpiry)) reasons.push("MOT expired");
+      if (isExpired(record.vehicleLicenceExpiry)) reasons.push("Vehicle licence expired");
+
+      return reasons.join(" | ");
+    }
+
+    function showApp(email) {
+      loggedInEmail.textContent = email;
+      loginScreen.classList.add("hidden");
+      appShell.classList.remove("hidden");
+    }
+
+    function showLogin() {
+      appShell.classList.add("hidden");
+      loginScreen.classList.remove("hidden");
+      loggedInEmail.textContent = "-";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function renderDrivers(records) {
+      const term = driverSearch.value.trim().toLowerCase();
+
+      const filtered = records.filter((record) => {
+        if (!term) return true;
+        return [
+          record.fullName,
+          record.googleEmail,
+          record.driverType,
+          record.badgeNumber,
+          record.vehicleNumber,
+          record.vehicleRegistration
+        ].some((v) => String(v || "").toLowerCase().includes(term));
+      });
+
+      if (!filtered.length) {
+        driversList.innerHTML = `<div class="empty-state">No driver records found.</div>`;
+        return;
+      }
+
+      driversList.innerHTML = filtered.map((record) => {
+        const suspended = effectiveSuspension(record);
+        const suspensionReason = effectiveSuspensionReason(record);
+        const walletBalance = Number(record.walletBalance || 0).toFixed(2);
+        const pets = record.petsAccepted === "yes" ? "Yes" : "No";
+
+        return `
+          <article class="driver-card">
+            <div class="driver-top">
+              <div class="driver-title">
+                <strong>${escapeHtml(record.fullName)}</strong>
+                <span>${escapeHtml(record.googleEmail)}</span>
+              </div>
+
+              <div class="pill-row">
+                <span class="pill ${record.driverType === "PH" ? "warn" : "ok"}">${escapeHtml(record.driverType)}</span>
+                <span class="pill ${suspended ? "danger" : "ok"}">${suspended ? "Suspended" : "Active"}</span>
+                <span class="pill">Wallet £${walletBalance}</span>
+              </div>
+            </div>
+
+            <div class="driver-grid">
+              <div class="mini">
+                <label>Badge</label>
+                <span>${escapeHtml(record.badgeNumber)}</span>
+              </div>
+              <div class="mini">
+                <label>Badge expiry</label>
+                <span>${escapeHtml(record.badgeExpiry)}</span>
+              </div>
+              <div class="mini">
+                <label>Vehicle / door card</label>
+                <span>${escapeHtml(record.vehicleNumber)}</span>
+              </div>
+              <div class="mini">
+                <label>Registration</label>
+                <span>${escapeHtml(record.vehicleRegistration)}</span>
+              </div>
+              <div class="mini">
+                <label>Passenger capacity</label>
+                <span>${escapeHtml(record.passengerCapacity)}</span>
+              </div>
+              <div class="mini">
+                <label>Pets accepted</label>
+                <span>${escapeHtml(pets)}</span>
+              </div>
+              <div class="mini">
+                <label>MOT expiry</label>
+                <span>${escapeHtml(record.motExpiry)}</span>
+              </div>
+              <div class="mini">
+                <label>Vehicle licence expiry</label>
+                <span>${escapeHtml(record.vehicleLicenceExpiry)}</span>
+              </div>
+              <div class="mini">
+                <label>Suspension reason</label>
+                <span>${escapeHtml(suspensionReason || "-")}</span>
+              </div>
+            </div>
+
+            <div class="driver-actions">
+              <button class="btn secondary small" type="button" data-action="toggle-suspension" data-id="${record.id}">
+                ${record.manualSuspended ? "Unsuspend" : "Suspend"}
+              </button>
+              <button class="btn secondary small" type="button" data-action="wallet-credit" data-id="${record.id}">
+                Adjust Wallet
+              </button>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function loadDrivers() {
+      driversList.innerHTML = `<div class="empty-state">Loading driver records...</div>`;
+
+      const q = query(collection(db, "drivers"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+
+      cachedDrivers = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }));
+
+      renderDrivers(cachedDrivers);
+    }
+
+    function getDriverFormData() {
+      const formData = new FormData(driverForm);
+
+      const fullName = String(formData.get("fullName") || "").trim();
+      const googleEmail = normaliseEmail(formData.get("googleEmail"));
+      const driverType = String(formData.get("driverType") || "").trim();
+      const badgeNumber = String(formData.get("badgeNumber") || "").trim();
+      const badgeExpiry = String(formData.get("badgeExpiry") || "").trim();
+      const vehicleNumber = String(formData.get("vehicleNumber") || "").trim();
+      const vehicleRegistration = String(formData.get("vehicleRegistration") || "").trim().toUpperCase();
+      const passengerCapacity = Number(formData.get("passengerCapacity") || 0);
+      const petsAccepted = String(formData.get("petsAccepted") || "").trim();
+      const motExpiry = String(formData.get("motExpiry") || "").trim();
+      const vehicleLicenceExpiry = String(formData.get("vehicleLicenceExpiry") || "").trim();
+      const walletBalance = Number(formData.get("startingWalletCredit") || 0);
+      const manualSuspended = String(formData.get("manualSuspended") || "no") === "yes";
+      const suspensionReason = String(formData.get("suspensionReason") || "").trim();
+
+      return {
+        fullName,
+        googleEmail,
+        driverType,
+        badgeNumber,
+        badgeExpiry,
+        vehicleNumber,
+        vehicleRegistration,
+        passengerCapacity,
+        petsAccepted,
+        motExpiry,
+        vehicleLicenceExpiry,
+        walletBalance,
+        manualSuspended,
+        suspensionReason
+      };
+    }
+
+    function validateDriverData(data) {
+      if (!data.fullName) return "Full name is required.";
+      if (!data.googleEmail) return "Google email is required.";
+      if (!data.driverType) return "Driver type is required.";
+      if (!data.badgeNumber) return "WaF badge number is required.";
+      if (!data.badgeExpiry) return "Badge expiry is required.";
+      if (!data.vehicleNumber) return "Vehicle / door card number is required.";
+      if (!data.vehicleRegistration) return "Vehicle registration is required.";
+      if (!Number.isFinite(data.passengerCapacity) || data.passengerCapacity < 1) return "Passenger capacity must be at least 1.";
+      if (!data.petsAccepted) return "Pets accepted must be selected.";
+      if (!data.motExpiry) return "MOT expiry is required.";
+      if (!data.vehicleLicenceExpiry) return "Vehicle licence expiry is required.";
+      if (!Number.isFinite(data.walletBalance) || data.walletBalance < 0) return "Opening wallet credit cannot be negative.";
+      if (data.manualSuspended && !data.suspensionReason) return "Suspension reason is required when manually suspended.";
+      return "";
+    }
+
+    async function createDriverRecord(event) {
+      event.preventDefault();
+      setFormMessage("");
+
+      const data = getDriverFormData();
+      const validationError = validateDriverData(data);
+
+      if (validationError) {
+        setFormMessage(validationError, "error");
+        return;
+      }
+
+      try {
+        const existingEmail = cachedDrivers.find((d) => normaliseEmail(d.googleEmail) === data.googleEmail);
+        if (existingEmail) {
+          setFormMessage("A driver record with that Google email already exists.", "error");
+          return;
+        }
+
+        const payload = {
+          ...data,
+          penaltyRateExtra: 0,
+          penaltyCount: 0,
+          autoSuspended: determineAutoSuspended(data),
+          activeJobsCount: 0,
+          pastJobsCount: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          createdBy: normaliseEmail(auth.currentUser?.email),
+          lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+        };
+
+        await addDoc(collection(db, "drivers"), payload);
+
+        setFormMessage("Driver created successfully.", "success");
+        driverForm.reset();
+        document.getElementById("startingWalletCredit").value = "0";
+        document.getElementById("manualSuspended").value = "no";
+
+        await loadDrivers();
+      } catch (error) {
+        console.error(error);
+        setFormMessage("Failed to create driver record.", "error");
+      }
+    }
+
+    async function handleDriverListClick(event) {
+      const actionBtn = event.target.closest("button[data-action]");
+      if (!actionBtn) return;
+
+      const action = actionBtn.dataset.action;
+      const id = actionBtn.dataset.id;
+      const record = cachedDrivers.find((d) => d.id === id);
+      if (!record) return;
+
+      try {
+        if (action === "toggle-suspension") {
+          const nextManualSuspended = !record.manualSuspended;
+          let nextReason = record.suspensionReason || "";
+
+          if (nextManualSuspended) {
+            const reason = window.prompt("Enter suspension reason:", nextReason || "Manual suspension");
+            if (reason === null) return;
+            nextReason = reason.trim();
+            if (!nextReason) return;
+          } else {
+            nextReason = "";
+          }
+
+          await updateDoc(doc(db, "drivers", id), {
+            manualSuspended: nextManualSuspended,
+            suspensionReason: nextReason,
+            updatedAt: serverTimestamp(),
+            lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+          });
+
+          await loadDrivers();
+          return;
+        }
+
+        if (action === "wallet-credit") {
+          const currentBalance = Number(record.walletBalance || 0);
+          const response = window.prompt(`Current wallet balance: £${currentBalance.toFixed(2)}\nEnter the new wallet balance:`, currentBalance.toFixed(2));
+          if (response === null) return;
+
+          const nextBalance = Number(response);
+          if (!Number.isFinite(nextBalance) || nextBalance < 0) {
+            window.alert("Wallet balance must be 0 or more.");
+            return;
+          }
+
+          await updateDoc(doc(db, "drivers", id), {
+            walletBalance: Number(nextBalance.toFixed(2)),
+            updatedAt: serverTimestamp(),
+            lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+          });
+
+          await loadDrivers();
+        }
+      } catch (error) {
+        console.error(error);
+        window.alert("Update failed.");
+      }
+    }
+
+    async function signInAdmin() {
+      setLoginStatus("Signing in...");
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const email = normaliseEmail(result.user?.email);
+
+        if (email !== ALLOWED_ADMIN_EMAIL) {
+          await signOut(auth);
+          setLoginStatus("This Google account is not authorised for admin access.", true);
+          return;
+        }
+
+        setLoginStatus("");
+      } catch (error) {
+        console.error(error);
+        setLoginStatus("Google sign-in failed.", true);
+      }
+    }
+
+    async function signOutAdmin() {
+      await signOut(auth);
+    }
+
+    function bindNav() {
+      navButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const target = btn.dataset.section;
+
+          navButtons.forEach((b) => b.classList.toggle("active", b === btn));
+
+          Object.entries(sections).forEach(([key, node]) => {
+            node.classList.toggle("hidden", key !== target);
+          });
+        });
+      });
+    }
+
+    googleSignInBtn.addEventListener("click", signInAdmin);
+    signOutBtn.addEventListener("click", signOutAdmin);
+    driverForm.addEventListener("submit", createDriverRecord);
+    resetDriverFormBtn.addEventListener("click", () => {
+      driverForm.reset();
+      document.getElementById("startingWalletCredit").value = "0";
+      document.getElementById("manualSuspended").value = "no";
+      setFormMessage("");
+    });
+    driverSearch.addEventListener("input", () => renderDrivers(cachedDrivers));
+    refreshDriversBtn.addEventListener("click", loadDrivers);
+    driversList.addEventListener("click", handleDriverListClick);
+
+    bindNav();
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        showLogin();
+        setLoginStatus("");
+        return;
+      }
+
+      const email = normaliseEmail(user.email);
+      if (email !== ALLOWED_ADMIN_EMAIL) {
+        await signOut(auth);
+        showLogin();
+        setLoginStatus("This Google account is not authorised for admin access.", true);
+        return;
+      }
+
+      showApp(email);
+
+      try {
+        await loadDrivers();
+      } catch (error) {
+        console.error(error);
+        driversList.innerHTML = `<div class="empty-state">Failed to load driver records.</div>`;
+      }
+    });
+  </script>
+</body>
+</html>
