@@ -885,12 +885,29 @@ function isExpired(dateValue) {
       <article class="driver-card" data-driver-id="${record.id}">
         <div class="driver-top">
           <div class="driver-title">
-            <strong>${escapeHtml(record.fullName)}</strong>
-            <span>${escapeHtml(record.googleEmail)}</span>
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="fullName" type="text" value="${escapeHtml(record.fullName)}">`
+                : `<strong>${escapeHtml(record.fullName)}</strong>`
+            }
+            ${
+              isEditing
+                ? `<input class="edit-field" data-field="googleEmail" type="email" value="${escapeHtml(record.googleEmail)}">`
+                : `<span>${escapeHtml(record.googleEmail)}</span>`
+            }
           </div>
 
           <div class="pill-row">
-            <span class="pill ${record.driverType === "PH" ? "warn" : "ok"}">${escapeHtml(record.driverType)}</span>
+            ${
+              isEditing
+                ? `
+                  <select class="edit-field pill ${record.driverType === "PH" ? "warn" : "ok"}" data-field="driverType">
+                    <option value="HC" ${record.driverType === "HC" ? "selected" : ""}>HC</option>
+                    <option value="PH" ${record.driverType === "PH" ? "selected" : ""}>PH</option>
+                  </select>
+                `
+                : `<span class="pill ${record.driverType === "PH" ? "warn" : "ok"}">${escapeHtml(record.driverType)}</span>`
+            }
             <span class="pill ${suspended ? "danger" : "ok"}">${suspended ? "Suspended" : "Active"}</span>
             <span class="pill">Wallet £${walletBalance}</span>
           </div>
@@ -1138,9 +1155,9 @@ function isExpired(dateValue) {
       };
 
       const updated = {
-        fullName: record.fullName,
-        googleEmail: record.googleEmail,
-        driverType: record.driverType,
+        fullName: getValue("fullName"),
+        googleEmail: normaliseEmail(getValue("googleEmail")),
+        driverType: getValue("driverType").toUpperCase(),
         badgeNumber: getValue("badgeNumber"),
         badgeExpiry: getValue("badgeExpiry"),
         vehicleNumber: getValue("vehicleNumber"),
@@ -1161,6 +1178,14 @@ function isExpired(dateValue) {
 
       if (validationError) {
         window.alert(validationError);
+        return;
+      }
+
+      const existingEmail = cachedDrivers.find(
+        (d) => d.id !== id && normaliseEmail(d.googleEmail) === updated.googleEmail
+      );
+      if (existingEmail) {
+        window.alert("A driver record with that Google email already exists.");
         return;
       }
 
