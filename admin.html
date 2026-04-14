@@ -1129,7 +1129,15 @@ function applyDistanceBuffer(miles) {
         return record.suspensionReason || "Manually suspended";
       }
 
-      function getActiveFleet(drivers) {
+      const reasons = [];
+      if (isExpired(record.badgeExpiry)) reasons.push("Badge expired");
+      if (isExpired(record.motExpiry)) reasons.push("MOT expired");
+      if (isExpired(record.vehicleLicenceExpiry)) reasons.push("Vehicle licence expired");
+
+      return reasons.join(" | ");
+    }
+
+          function getActiveFleet(drivers) {
   return drivers.filter((driver) => !effectiveSuspension(driver));
 }
 
@@ -1402,14 +1410,6 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     return null;
   }
 }
-
-      const reasons = [];
-      if (isExpired(record.badgeExpiry)) reasons.push("Badge expired");
-      if (isExpired(record.motExpiry)) reasons.push("MOT expired");
-      if (isExpired(record.vehicleLicenceExpiry)) reasons.push("Vehicle licence expired");
-
-      return reasons.join(" | ");
-    }
 
     function showApp(email) {
       loggedInEmail.textContent = email;
