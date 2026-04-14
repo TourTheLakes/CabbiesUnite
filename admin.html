@@ -9,6 +9,7 @@
     gtag('js', new Date());
     gtag('config', 'G-D6Z4RRNPJS');
   </script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDzOY5kRe_NWwdr-Lz4CZlZJlbbqSQAvVE&libraries=places"></script>
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -1669,6 +1670,33 @@ if (action === "confirm-wallet") {
       });
     }
 
+    function initAddressAutocomplete() {
+  const pickupInput = document.getElementById("manualPickupAddress");
+  const dropoffInput = document.getElementById("manualDropoffAddress");
+
+  if (!pickupInput || !dropoffInput) return;
+
+  const options = {
+    types: ["geocode"],
+    componentRestrictions: { country: "gb" }
+  };
+
+  const pickupAutocomplete = new google.maps.places.Autocomplete(pickupInput, options);
+  const dropoffAutocomplete = new google.maps.places.Autocomplete(dropoffInput, options);
+
+  pickupAutocomplete.addListener("place_changed", () => {
+    const place = pickupAutocomplete.getPlace();
+    if (!place.formatted_address) return;
+    pickupInput.value = place.formatted_address;
+  });
+
+  dropoffAutocomplete.addListener("place_changed", () => {
+    const place = dropoffAutocomplete.getPlace();
+    if (!place.formatted_address) return;
+    dropoffInput.value = place.formatted_address;
+  });
+}
+
     googleSignInBtn.addEventListener("click", signInAdmin);
 signOutBtn.addEventListener("click", signOutAdmin);
 
@@ -1713,9 +1741,10 @@ driversList.addEventListener("click", handleDriverListClick);
 
   showApp(email);
 
-  try {
-    await loadDrivers();
-    await loadJobs();
+try {
+  initAddressAutocomplete();
+  await loadDrivers();
+  await loadJobs();
   } catch (error) {
     console.error(error);
     driversList.innerHTML = `<div class="empty-state">Failed to load data.</div>`;
