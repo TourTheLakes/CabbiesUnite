@@ -2100,18 +2100,36 @@ if (action === "confirm-wallet") {
   const pickupAutocomplete = new google.maps.places.Autocomplete(pickupInput, options);
   const dropoffAutocomplete = new google.maps.places.Autocomplete(dropoffInput, options);
 
+  function buildPlaceLabel(place) {
+    const name = String(place?.name || "").trim();
+    const address = String(place?.formatted_address || "").trim();
+
+    if (name && address) {
+      if (address.toLowerCase().startsWith(name.toLowerCase())) {
+        return address;
+      }
+      return `${name}, ${address}`;
+    }
+
+    return name || address || "";
+  }
+
   pickupAutocomplete.addListener("place_changed", () => {
     const place = pickupAutocomplete.getPlace();
-    if (place.formatted_address) {
-      pickupInput.value = place.formatted_address;
+    const label = buildPlaceLabel(place);
+
+    if (label) {
+      pickupInput.value = label;
       calculateManualQuote();
     }
   });
 
   dropoffAutocomplete.addListener("place_changed", () => {
     const place = dropoffAutocomplete.getPlace();
-    if (place.formatted_address) {
-      dropoffInput.value = place.formatted_address;
+    const label = buildPlaceLabel(place);
+
+    if (label) {
+      dropoffInput.value = label;
       calculateManualQuote();
     }
   });
