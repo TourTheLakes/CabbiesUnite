@@ -613,6 +613,7 @@
       <nav class="nav-group">
         <button class="nav-btn active" data-section="drivers" type="button">Drivers</button>
         <button class="nav-btn" data-section="jobs" type="button">Jobs</button>
+        <button class="nav-btn" data-section="manual" type="button">El’Manuel</button>
         <button class="nav-btn" data-section="wallets" type="button">Wallets</button>
         <button class="nav-btn" data-section="penalties" type="button">Penalties</button>
         <button class="nav-btn" data-section="documents" type="button">Documents</button>
@@ -753,6 +754,95 @@
        <div id="jobsList" class="drivers-list"></div>
      </div>
    </section>
+      
+      <section id="section-manual" class="hidden">
+  <div class="page-header">
+    <h2>El’Manuel</h2>
+    <p>Manual booking entry. Same logic as live X booking flow.</p>
+  </div>
+
+  <div class="panel">
+    <form id="manualBookingForm" class="form-grid">
+      <div class="field full">
+        <label for="manualCustomerName">Customer name</label>
+        <input id="manualCustomerName" name="customerName" type="text" required />
+      </div>
+
+      <div class="field">
+        <label for="manualCustomerPhone">Contact number</label>
+        <input id="manualCustomerPhone" name="customerPhone" type="text" required />
+      </div>
+
+      <div class="field">
+        <label for="manualPhoneConfirmed">Best number confirmed</label>
+        <select id="manualPhoneConfirmed" name="phoneConfirmed" required>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+
+      <div class="field full">
+        <label for="manualPickupAddress">Pickup address</label>
+        <input id="manualPickupAddress" name="pickupAddress" type="text" required />
+      </div>
+
+      <div class="field full">
+        <label for="manualDropoffAddress">Dropoff address</label>
+        <input id="manualDropoffAddress" name="dropoffAddress" type="text" required />
+      </div>
+
+      <div class="field">
+        <label for="manualScheduledDate">Date</label>
+        <input id="manualScheduledDate" name="scheduledDate" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" required />
+      </div>
+
+      <div class="field">
+        <label for="manualScheduledTime">Time</label>
+        <input id="manualScheduledTime" name="scheduledTime" type="time" required />
+      </div>
+
+      <div class="field">
+        <label for="manualPassengerCount">Passengers</label>
+        <input id="manualPassengerCount" name="passengerCount" type="number" min="1" max="8" required />
+      </div>
+
+      <div class="field">
+        <label for="manualPetsRequired">Pets</label>
+        <select id="manualPetsRequired" name="petsRequired" required>
+          <option value="no">No</option>
+          <option value="yes">Yes</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="manualLuggageSize">Luggage size</label>
+        <select id="manualLuggageSize" name="luggageSize" required>
+          <option value="none">None</option>
+          <option value="small">Small</option>
+          <option value="medium">Medium</option>
+          <option value="large">Large</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="manualLuggageCount">Luggage count</label>
+        <input id="manualLuggageCount" name="luggageCount" type="number" min="0" value="0" required />
+      </div>
+
+      <div class="field full">
+        <label for="manualNotes">Notes</label>
+        <textarea id="manualNotes" name="notes" placeholder="Optional notes"></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn" type="submit">Create Booking</button>
+        <button id="resetManualBookingBtn" class="btn secondary" type="button">Clear Form</button>
+      </div>
+    </form>
+
+    <div id="manualBookingMessage" class="message"></div>
+  </div>
+</section>
 
       <section id="section-wallets" class="hidden">
         <div class="page-header">
@@ -841,10 +931,15 @@ const firebaseConfig = {
     const refreshDriversBtn = document.getElementById("refreshDriversBtn");
     const driversList = document.getElementById("driversList");
 
+    const manualBookingForm = document.getElementById("manualBookingForm");
+    const manualBookingMessage = document.getElementById("manualBookingMessage");
+    const resetManualBookingBtn = document.getElementById("resetManualBookingBtn");
+
     const navButtons = [...document.querySelectorAll(".nav-btn")];
     const sections = {
       drivers: document.getElementById("section-drivers"),
       jobs: document.getElementById("section-jobs"),
+      manual: document.getElementById("section-manual"),
       wallets: document.getElementById("section-wallets"),
       penalties: document.getElementById("section-penalties"),
       documents: document.getElementById("section-documents"),
@@ -868,6 +963,11 @@ const firebaseConfig = {
     function setFormMessage(text, type = "") {
       driverFormMessage.textContent = text || "";
       driverFormMessage.className = type ? `message ${type}` : "message";
+    }
+
+    function setManualBookingMessage(text, type = "") {
+      manualBookingMessage.textContent = text || "";
+      manualBookingMessage.className = type ? `message ${type}` : "message";
     }
 
 function todayUk() {
@@ -914,6 +1014,21 @@ function isExpired(dateValue) {
   return inputValue < todayValue;
 }
 
+    function isValidTime(value) {
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || "").trim());
+}
+
+function combineUkDateAndTime(dateValue, timeValue) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(dateValue || "").trim());
+  if (!match) return "";
+
+  const day = match[1];
+  const month = match[2];
+  const year = match[3];
+
+  return `${year}-${month}-${day}T${timeValue}:00`;
+}
+
     function determineAutoSuspended(record) {
       return (
         isExpired(record.badgeExpiry) ||
@@ -958,6 +1073,10 @@ function isExpired(dateValue) {
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
+    }
+
+    function generateGroupId() {
+      return `BK-${Date.now()}`;
     }
 
     function renderDrivers(records) {
@@ -1172,6 +1291,25 @@ function isExpired(dateValue) {
       };
     }
 
+    function getManualBookingFormData() {
+  const formData = new FormData(manualBookingForm);
+
+  return {
+    customerName: String(formData.get("customerName") || "").trim(),
+    customerPhone: String(formData.get("customerPhone") || "").trim(),
+    phoneConfirmed: String(formData.get("phoneConfirmed") || "no").trim(),
+    pickupAddress: String(formData.get("pickupAddress") || "").trim(),
+    dropoffAddress: String(formData.get("dropoffAddress") || "").trim(),
+    scheduledDate: String(formData.get("scheduledDate") || "").trim(),
+    scheduledTime: String(formData.get("scheduledTime") || "").trim(),
+    passengerCount: Number(formData.get("passengerCount") || 0),
+    petsRequired: String(formData.get("petsRequired") || "no").trim(),
+    luggageSize: String(formData.get("luggageSize") || "none").trim(),
+    luggageCount: Number(formData.get("luggageCount") || 0),
+    notes: String(formData.get("notes") || "").trim()
+  };
+}
+
     function validateDriverData(data) {
   if (!data.fullName) return "Full name is required.";
   if (!data.googleEmail) return "Google email is required.";
@@ -1189,6 +1327,50 @@ function isExpired(dateValue) {
   if (!isValidUkDate(data.badgeExpiry)) return "Badge expiry must be in dd/mm/yyyy format.";
   if (!isValidUkDate(data.motExpiry)) return "MOT expiry must be in dd/mm/yyyy format.";
   if (!isValidUkDate(data.vehicleLicenceExpiry)) return "Vehicle licence expiry must be in dd/mm/yyyy format.";
+  return "";
+}
+
+    function validateManualBookingData(data) {
+  if (!data.customerName) return "Customer name is required.";
+  if (!data.customerPhone) return "Contact number is required.";
+  if (!data.pickupAddress) return "Pickup address is required.";
+  if (!data.dropoffAddress) return "Dropoff address is required.";
+  if (!data.scheduledDate) return "Date is required.";
+  if (!isValidUkDate(data.scheduledDate)) return "Date must be in dd/mm/yyyy format.";
+  if (!data.scheduledTime) return "Time is required.";
+  if (!isValidTime(data.scheduledTime)) return "Time must be valid.";
+  if (!Number.isFinite(data.passengerCount) || data.passengerCount < 1 || data.passengerCount > 8) {
+    return "Passenger count must be between 1 and 8.";
+  }
+  if (!Number.isFinite(data.luggageCount) || data.luggageCount < 0) {
+    return "Luggage count cannot be negative.";
+  }
+
+  if (data.passengerCount === 6) {
+    if (data.luggageSize === "medium" || data.luggageSize === "large") {
+      return "With luggage, a 6-passenger booking requires 2 vehicles. Use a compound booking.";
+    }
+    if (data.luggageSize === "small" && data.luggageCount > 2) {
+      return "6 passengers can only travel with up to 2 small suitcases in one vehicle. Use a compound booking.";
+    }
+  }
+
+  if (data.passengerCount <= 4 && data.luggageSize === "large" && data.luggageCount > 2) {
+    return "This luggage exceeds standard single-vehicle capacity. Use a compound booking or reduce luggage.";
+  }
+
+  if (data.passengerCount <= 8 && data.luggageSize === "large" && data.luggageCount > 4) {
+    return "8-seat capacity is limited to 4 large suitcases. Additional hand luggage may need to be carried in the cabin.";
+  }
+
+  if (data.passengerCount <= 8 && data.luggageSize === "medium" && data.luggageCount > 6) {
+    return "8-seat capacity is limited to 6 medium suitcases.";
+  }
+
+  if (data.passengerCount <= 8 && data.luggageSize === "small" && data.luggageCount > 8) {
+    return "8-seat capacity is limited to 8 small suitcases.";
+  }
+
   return "";
 }
 
@@ -1237,6 +1419,95 @@ function isExpired(dateValue) {
         setFormMessage("Failed to create driver record.", "error");
       }
     }
+
+    async function createJobDocuments(data) {
+  const groupId = generateGroupId();
+  const scheduledAt = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
+
+  const basePayload = {
+    source: "admin",
+    customerName: data.customerName,
+    customerPhone: data.customerPhone,
+    customerPhoneVerified: data.phoneConfirmed === "yes",
+    pickupAddress: data.pickupAddress,
+    dropoffAddress: data.dropoffAddress,
+    scheduledDate: data.scheduledDate,
+    scheduledTime: data.scheduledTime,
+    scheduledAt,
+    passengerCount: data.passengerCount,
+    petsRequired: data.petsRequired === "yes",
+    luggageSize: data.luggageSize,
+    luggageCount: data.luggageCount,
+    notes: data.notes,
+    acceptedByDriverId: "",
+    feeCharged: false,
+    status: "pending",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdBy: normaliseEmail(auth.currentUser?.email),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  };
+
+  const needsCompound =
+    data.passengerCount === 6 &&
+    (
+      data.luggageSize === "medium" ||
+      data.luggageSize === "large" ||
+      (data.luggageSize === "small" && data.luggageCount > 2)
+    );
+
+  if (!needsCompound) {
+    await addDoc(collection(db, "jobs"), {
+      ...basePayload,
+      groupId,
+      partIndex: 1,
+      totalParts: 1
+    });
+    return;
+  }
+
+  const parts = [
+    { partIndex: 1, passengerCount: 3 },
+    { partIndex: 2, passengerCount: 3 }
+  ];
+
+  for (const part of parts) {
+    await addDoc(collection(db, "jobs"), {
+      ...basePayload,
+      groupId,
+      partIndex: part.partIndex,
+      totalParts: 2,
+      passengerCount: part.passengerCount
+    });
+  }
+}
+
+    async function handleManualBookingSubmit(event) {
+  event.preventDefault();
+  setManualBookingMessage("");
+
+  const data = getManualBookingFormData();
+  const validationError = validateManualBookingData(data);
+
+  if (validationError) {
+    setManualBookingMessage(validationError, "error");
+    return;
+  }
+
+  try {
+    await createJobDocuments(data);
+    setManualBookingMessage("Booking created successfully.", "success");
+    manualBookingForm.reset();
+    document.getElementById("manualPhoneConfirmed").value = "yes";
+    document.getElementById("manualPetsRequired").value = "no";
+    document.getElementById("manualLuggageSize").value = "none";
+    document.getElementById("manualLuggageCount").value = "0";
+    await loadJobs();
+  } catch (error) {
+    console.error(error);
+    setManualBookingMessage("Failed to create booking.", "error");
+  }
+}
 
     async function handleDriverListClick(event) {
   const actionBtn = event.target.closest("button[data-action]");
@@ -1399,45 +1670,57 @@ if (action === "confirm-wallet") {
     }
 
     googleSignInBtn.addEventListener("click", signInAdmin);
-    signOutBtn.addEventListener("click", signOutAdmin);
-    driverForm.addEventListener("submit", createDriverRecord);
-    resetDriverFormBtn.addEventListener("click", () => {
-      driverForm.reset();
-      document.getElementById("startingWalletCredit").value = "0";
-      document.getElementById("manualSuspended").value = "no";
-      setFormMessage("");
-    });
-    driverSearch.addEventListener("input", () => renderDrivers(cachedDrivers));
-    refreshDriversBtn.addEventListener("click", loadDrivers);
-    driversList.addEventListener("click", handleDriverListClick);
+signOutBtn.addEventListener("click", signOutAdmin);
+
+driverForm.addEventListener("submit", createDriverRecord);
+resetDriverFormBtn.addEventListener("click", () => {
+  driverForm.reset();
+  document.getElementById("startingWalletCredit").value = "0";
+  document.getElementById("manualSuspended").value = "no";
+  setFormMessage("");
+});
+
+manualBookingForm.addEventListener("submit", handleManualBookingSubmit);
+resetManualBookingBtn.addEventListener("click", () => {
+  manualBookingForm.reset();
+  document.getElementById("manualPhoneConfirmed").value = "yes";
+  document.getElementById("manualPetsRequired").value = "no";
+  document.getElementById("manualLuggageSize").value = "none";
+  document.getElementById("manualLuggageCount").value = "0";
+  setManualBookingMessage("");
+});
+
+driverSearch.addEventListener("input", () => renderDrivers(cachedDrivers));
+refreshDriversBtn.addEventListener("click", loadDrivers);
+driversList.addEventListener("click", handleDriverListClick);
 
     bindNav();
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        showLogin();
-        setLoginStatus("");
-        return;
-      }
-
-      const email = normaliseEmail(user.email);
-      if (email !== ALLOWED_ADMIN_EMAIL) {
-        await signOut(auth);
-        showLogin();
-        setLoginStatus("This Google account is not authorised for admin access.", true);
-        return;
-      }
-
-      showApp(email);
-
-      try {
-       await loadDrivers();
-       await loadJobs();
-  } catch (error) {
-       console.error(error);
-       driversList.innerHTML = `<div class="empty-state">Failed to load data.</div>`;
+  if (!user) {
+    showLogin();
+    setLoginStatus("");
+    return;
   }
-    });
+
+  const email = normaliseEmail(user.email);
+  if (email !== ALLOWED_ADMIN_EMAIL) {
+    await signOut(auth);
+    showLogin();
+    setLoginStatus("This Google account is not authorised for admin access.", true);
+    return;
+  }
+
+  showApp(email);
+
+  try {
+    await loadDrivers();
+    await loadJobs();
+  } catch (error) {
+    console.error(error);
+    driversList.innerHTML = `<div class="empty-state">Failed to load data.</div>`;
+  }
+});
 
 async function loadJobs() {
   const jobsList = document.getElementById("jobsList");
