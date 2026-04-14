@@ -775,12 +775,17 @@
       </div>
 
       <div class="field">
-        <label for="manualPhoneConfirmed">Best number confirmed</label>
-        <select id="manualPhoneConfirmed" name="phoneConfirmed" required>
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
-        </select>
-      </div>
+  <label for="manualPhoneConfirmed">Best number confirmed</label>
+  <select id="manualPhoneConfirmed" name="phoneConfirmed" required>
+    <option value="yes">Yes</option>
+    <option value="no">No</option>
+  </select>
+</div>
+
+<div class="field">
+  <label for="manualPreferredPhone">Preferred contact number</label>
+  <input id="manualPreferredPhone" name="preferredPhone" type="text" />
+</div>
 
       <div class="field full">
         <label for="manualPickupAddress">Pickup address</label>
@@ -836,12 +841,45 @@
       </div>
 
       <div class="form-actions">
-        <button class="btn" type="submit">Create Booking</button>
-        <button id="resetManualBookingBtn" class="btn secondary" type="button">Clear Form</button>
-      </div>
-    </form>
+  <button class="btn" type="submit">Create Booking</button>
+  <button id="resetManualBookingBtn" class="btn secondary" type="button">Clear Form</button>
+</div>
+</form>
 
-    <div id="manualBookingMessage" class="message"></div>
+<div id="manualQuotePanel" class="panel hidden" style="margin-top:16px;">
+  <h3>Quote Summary</h3>
+  <div class="driver-grid">
+    <div class="mini">
+      <label>Distance</label>
+      <span id="quoteDistance">-</span>
+    </div>
+    <div class="mini">
+      <label>HC Price</label>
+      <span id="quoteHCPrice">-</span>
+    </div>
+    <div class="mini">
+      <label>PH Price</label>
+      <span id="quotePHPrice">-</span>
+    </div>
+    <div class="mini">
+      <label>Live Quoted Price</label>
+      <span id="quoteLivePrice">-</span>
+    </div>
+    <div class="mini">
+      <label>Vehicles Required</label>
+      <span id="quoteVehicleCount">-</span>
+    </div>
+    <div class="mini">
+      <label>Total Price</label>
+      <span id="quoteTotalPrice">-</span>
+    </div>
+  </div>
+
+  <div id="quoteVehicleBreakdown" class="job-parts" style="margin-top:12px;"></div>
+  <div id="quoteWarning" class="message"></div>
+</div>
+
+<div id="manualBookingMessage" class="message"></div>
   </div>
 </section>
 
@@ -935,6 +973,16 @@ const firebaseConfig = {
     const manualBookingForm = document.getElementById("manualBookingForm");
     const manualBookingMessage = document.getElementById("manualBookingMessage");
     const resetManualBookingBtn = document.getElementById("resetManualBookingBtn");
+
+    const manualQuotePanel = document.getElementById("manualQuotePanel");
+    const quoteDistance = document.getElementById("quoteDistance");
+    const quoteHCPrice = document.getElementById("quoteHCPrice");
+    const quotePHPrice = document.getElementById("quotePHPrice");
+    const quoteLivePrice = document.getElementById("quoteLivePrice");
+    const quoteVehicleCount = document.getElementById("quoteVehicleCount");
+    const quoteTotalPrice = document.getElementById("quoteTotalPrice");
+    const quoteVehicleBreakdown = document.getElementById("quoteVehicleBreakdown");
+    const quoteWarning = document.getElementById("quoteWarning");
 
     const navButtons = [...document.querySelectorAll(".nav-btn")];
     const sections = {
@@ -1030,6 +1078,40 @@ function combineUkDateAndTime(dateValue, timeValue) {
   return `${year}-${month}-${day}T${timeValue}:00`;
 }
 
+    async function getDrivingDistanceMiles(origin, destination) {
+  return new Promise((resolve, reject) => {
+    if (!window.google || !google.maps || !google.maps.DirectionsService) {
+      reject(new Error("Google Directions not available."));
+      return;
+    }
+
+    const service = new google.maps.DirectionsService();
+
+    service.route(
+      {
+        origin,
+        destination,
+        travelMode: google.maps.TravelMode.DRIVING
+      },
+      (result, status) => {
+        if (status !== "OK" || !result.routes?.length || !result.routes[0].legs?.length) {
+          reject(new Error("Could not calculate driving distance."));
+          return;
+        }
+
+        const meters = result.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+        const miles = meters / 1609.344;
+        resolve(miles);
+      }
+    );
+  });
+}
+
+function applyDistanceBuffer(miles) {
+  const bufferMiles = 0.5 / 1.609344;
+  return miles + bufferMiles;
+}
+
     function determineAutoSuspended(record) {
       return (
         isExpired(record.badgeExpiry) ||
@@ -1046,6 +1128,280 @@ function combineUkDateAndTime(dateValue, timeValue) {
       if (record.manualSuspended) {
         return record.suspensionReason || "Manually suspended";
       }
+
+      function getActiveFleet(drivers) {
+  return drivers.filter((driver) => !effectiveSuspension(driver));
+}
+
+function getFleetCountByCapacity(drivers) {
+  const counts = { 4: 0, 6: 0, 8: 0 };
+
+  drivers.forEach((driver) => {
+    const cap = Number(driver.passengerCapacity);
+    if (counts[cap] !== undefined) {
+      counts[cap] += 1;
+    }
+  });
+
+  return counts;
+}
+
+      function canSingleVehicleTakeJob(capacity, passengers, luggageSize, luggageCount) {
+  if (capacity < passengers) return false;
+
+  if (capacity === 4) {
+    if (luggageSize === "large" && luggageCount > 2) return false;
+    return true;
+  }
+
+  if (capacity === 6) {
+    if (passengers === 6) {
+      if (luggageSize === "medium" || luggageSize === "large") return false;
+      if (luggageSize === "small" && luggageCount > 2) return false;
+    }
+    return true;
+  }
+
+  if (capacity === 8) {
+    if (luggageSize === "large" && luggageCount > 4) return false;
+    if (luggageSize === "medium" && luggageCount > 6) return false;
+    if (luggageSize === "small" && luggageCount > 8) return false;
+    return true;
+  }
+
+  return false;
+}
+      
+      function splitPassengersEvenly(passengers, vehicles) {
+  const base = Math.floor(passengers / vehicles);
+  const remainder = passengers % vehicles;
+  const result = [];
+
+  for (let i = 0; i < vehicles; i++) {
+    result.push(base + (i < remainder ? 1 : 0));
+  }
+
+  return result;
+}
+
+function allocateLuggageEvenly(luggageCount, vehicles) {
+  const base = Math.floor(luggageCount / vehicles);
+  const remainder = luggageCount % vehicles;
+  const result = [];
+
+  for (let i = 0; i < vehicles; i++) {
+    result.push(base + (i < remainder ? 1 : 0));
+  }
+
+  return result;
+}
+
+      function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) {
+  const fleetCounts = getFleetCountByCapacity(activeDrivers);
+
+  const availableCapacities = [8, 6, 4].filter((cap) => fleetCounts[cap] > 0);
+
+  for (const cap of availableCapacities) {
+    if (canSingleVehicleTakeJob(cap, passengers, luggageSize, luggageCount)) {
+      return {
+        vehicles: [
+          {
+            capacity: cap,
+            passengers,
+            luggageSize,
+            luggageCount
+          }
+        ],
+        compound: false,
+        warning: ""
+      };
+    }
+  }
+
+  for (let vehicleCount = 2; vehicleCount <= Math.max(10, passengers); vehicleCount++) {
+    const passengerSplit = splitPassengersEvenly(passengers, vehicleCount);
+    const luggageSplit = allocateLuggageEvenly(luggageCount, vehicleCount);
+
+    const tentative = [];
+    const remainingFleet = { ...fleetCounts };
+    let valid = true;
+
+    for (let i = 0; i < vehicleCount; i++) {
+      const partPassengers = passengerSplit[i];
+      const partLuggageCount = luggageSplit[i];
+
+      let matchedCapacity = null;
+
+      for (const cap of [4, 6, 8]) {
+        if (remainingFleet[cap] <= 0) continue;
+        if (canSingleVehicleTakeJob(cap, partPassengers, luggageSize, partLuggageCount)) {
+          matchedCapacity = cap;
+          remainingFleet[cap] -= 1;
+          break;
+        }
+      }
+
+      if (!matchedCapacity) {
+        valid = false;
+        break;
+      }
+
+      tentative.push({
+        capacity: matchedCapacity,
+        passengers: partPassengers,
+        luggageSize,
+        luggageCount: partLuggageCount
+      });
+    }
+
+    if (valid) {
+      return {
+        vehicles: tentative,
+        compound: tentative.length > 1,
+        warning: tentative.length > 1
+          ? "This journey requires multiple vehicles due to passenger and luggage requirements. Happy to proceed?"
+          : ""
+      };
+    }
+  }
+
+  return null;
+}
+
+      function renderManualQuote(quote) {
+  if (!quote) {
+    manualQuotePanel.classList.add("hidden");
+    quoteDistance.textContent = "-";
+    quoteHCPrice.textContent = "-";
+    quotePHPrice.textContent = "-";
+    quoteLivePrice.textContent = "-";
+    quoteVehicleCount.textContent = "-";
+    quoteTotalPrice.textContent = "-";
+    quoteVehicleBreakdown.innerHTML = "";
+    quoteWarning.textContent = "";
+    quoteWarning.className = "message";
+    return;
+  }
+
+  manualQuotePanel.classList.remove("hidden");
+
+  quoteDistance.textContent = `${quote.distanceMiles.toFixed(2)} miles`;
+  quoteHCPrice.textContent = `£${quote.hcPrice.toFixed(2)}`;
+  quotePHPrice.textContent = `£${quote.phPrice.toFixed(2)}`;
+  quoteLivePrice.textContent = `£${quote.liveQuotedPrice.toFixed(2)}`;
+  quoteVehicleCount.textContent = String(quote.vehiclePlan.vehicles.length);
+  quoteTotalPrice.textContent = `£${quote.totalPrice.toFixed(2)}`;
+
+  quoteVehicleBreakdown.innerHTML = quote.vehiclePlan.vehicles.map((vehicle, index) => `
+    <div class="job-part">
+      <div class="job-row">
+        <span><strong>Vehicle ${index + 1}</strong></span>
+        <span>${vehicle.capacity} seats</span>
+      </div>
+      <div class="job-row">
+        <span>${vehicle.passengers} passengers</span>
+        <span>${vehicle.luggageSize} (${vehicle.luggageCount})</span>
+      </div>
+      <div class="job-row">
+        <span>Vehicle price</span>
+        <span>£${vehicle.price.toFixed(2)}</span>
+      </div>
+    </div>
+  `).join("");
+
+  quoteWarning.textContent = quote.vehiclePlan.warning || "";
+  quoteWarning.className = quote.vehiclePlan.warning ? "message error" : "message";
+}
+
+      async function calculateManualQuote() {
+  const data = getManualBookingFormData();
+
+  if (!data.pickupAddress || !data.dropoffAddress) {
+    renderManualQuote(null);
+    return null;
+  }
+
+  if (!isValidUkDate(data.scheduledDate) || !isValidTime(data.scheduledTime)) {
+    renderManualQuote(null);
+    return null;
+  }
+
+  if (!Number.isFinite(data.passengerCount) || data.passengerCount < 1) {
+    renderManualQuote(null);
+    return null;
+  }
+
+  if (!Number.isFinite(data.luggageCount) || data.luggageCount < 0) {
+    renderManualQuote(null);
+    return null;
+  }
+
+  try {
+    const rawMiles = await getDrivingDistanceMiles(data.pickupAddress, data.dropoffAddress);
+    const distanceMiles = applyDistanceBuffer(rawMiles);
+    const scheduledAt = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
+
+    const hcPrice = calculateHCPrice(distanceMiles, data.passengerCount, scheduledAt);
+    const phPrice = calculatePHPrice(distanceMiles, data.passengerCount, scheduledAt);
+    const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
+
+    const activeFleet = getActiveFleet(cachedDrivers);
+    const vehiclePlan = solveVehiclePlan(
+      data.passengerCount,
+      data.luggageSize,
+      data.luggageCount,
+      activeFleet
+    );
+
+    if (!vehiclePlan) {
+      renderManualQuote({
+        distanceMiles,
+        hcPrice,
+        phPrice,
+        liveQuotedPrice,
+        vehiclePlan: {
+          vehicles: [],
+          warning: "No active vehicle combination currently exists to fulfil this booking."
+        },
+        totalPrice: 0
+      });
+      return null;
+    }
+
+    vehiclePlan.vehicles = vehiclePlan.vehicles.map((vehicle) => {
+      const vehiclePrice =
+        distanceMiles <= 3
+          ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
+          : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
+
+      return {
+        ...vehicle,
+        price: vehiclePrice
+      };
+    });
+
+    const totalPrice = vehiclePlan.vehicles.reduce((sum, vehicle) => sum + vehicle.price, 0);
+
+    const quote = {
+      distanceMiles,
+      hcPrice,
+      phPrice,
+      liveQuotedPrice,
+      vehiclePlan,
+      totalPrice: Number(totalPrice.toFixed(2)),
+      quotedPriceInitial: liveQuotedPrice,
+      quotedPriceCurrent: liveQuotedPrice,
+      scheduledAt
+    };
+
+    renderManualQuote(quote);
+    return quote;
+  } catch (error) {
+    console.error(error);
+    renderManualQuote(null);
+    return null;
+  }
+}
 
       const reasons = [];
       if (isExpired(record.badgeExpiry)) reasons.push("Badge expired");
@@ -1079,6 +1435,84 @@ function combineUkDateAndTime(dateValue, timeValue) {
     function generateGroupId() {
       return `BK-${Date.now()}`;
     }
+
+    const TARIFFS = {
+  day: {
+    firstMile: 4.20,
+    perTenth: 0.30
+  },
+  night: {
+    firstMile: 6.30,
+    perTenth: 0.40
+  },
+  holiday: {
+    firstMile: 8.40,
+    perTenth: 0.60
+  }
+};
+
+    function isEnglishBankHoliday(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const key = `${yyyy}-${mm}-${dd}`;
+
+  const fixed = new Set([
+    `${yyyy}-01-01`,
+    `${yyyy}-12-25`,
+    `${yyyy}-12-26`
+  ]);
+
+  return fixed.has(key);
+}
+
+function getTariffBand(dateTimeString) {
+  const date = new Date(dateTimeString);
+
+  if (isEnglishBankHoliday(date)) {
+    return TARIFFS.holiday;
+  }
+
+  const hour = date.getHours();
+
+  if (hour >= 23 || hour < 7) {
+    return TARIFFS.night;
+  }
+
+  return TARIFFS.day;
+}
+
+function calculateHCPrice(miles, passengers, dateTimeString) {
+  const tariff = getTariffBand(dateTimeString);
+
+  let price = tariff.firstMile;
+
+  if (miles > 1) {
+    const remaining = miles - 1;
+    const tenths = Math.ceil(remaining * 10);
+    price += tenths * tariff.perTenth;
+  }
+
+  const extraPassengers = Math.max(0, passengers - 2);
+  price += extraPassengers * 0.70;
+
+  return Number(price.toFixed(2));
+}
+
+function calculatePHPrice(miles, passengers, dateTimeString) {
+  let price = 11.00;
+
+  if (miles > 3) {
+    const extraMiles = miles - 3;
+    const hcExtra = calculateHCPrice(extraMiles, 0, dateTimeString);
+    price += hcExtra;
+  }
+
+  const extraPassengers = Math.max(0, passengers - 2);
+  price += extraPassengers * 0.70;
+
+  return Number(price.toFixed(2));
+}
 
     function renderDrivers(records) {
   const term = driverSearch.value.trim().toLowerCase();
@@ -1299,6 +1733,7 @@ function combineUkDateAndTime(dateValue, timeValue) {
     customerName: String(formData.get("customerName") || "").trim(),
     customerPhone: String(formData.get("customerPhone") || "").trim(),
     phoneConfirmed: String(formData.get("phoneConfirmed") || "no").trim(),
+    preferredPhone: String(formData.get("preferredPhone") || "").trim(),
     pickupAddress: String(formData.get("pickupAddress") || "").trim(),
     dropoffAddress: String(formData.get("dropoffAddress") || "").trim(),
     scheduledDate: String(formData.get("scheduledDate") || "").trim(),
@@ -1340,38 +1775,15 @@ function combineUkDateAndTime(dateValue, timeValue) {
   if (!isValidUkDate(data.scheduledDate)) return "Date must be in dd/mm/yyyy format.";
   if (!data.scheduledTime) return "Time is required.";
   if (!isValidTime(data.scheduledTime)) return "Time must be valid.";
-  if (!Number.isFinite(data.passengerCount) || data.passengerCount < 1 || data.passengerCount > 8) {
-    return "Passenger count must be between 1 and 8.";
+  if (!Number.isFinite(data.passengerCount) || data.passengerCount < 1 || data.passengerCount > 99) {
+    return "Passenger count must be valid.";
   }
   if (!Number.isFinite(data.luggageCount) || data.luggageCount < 0) {
     return "Luggage count cannot be negative.";
   }
-
-  if (data.passengerCount === 6) {
-    if (data.luggageSize === "medium" || data.luggageSize === "large") {
-      return "With luggage, a 6-passenger booking requires 2 vehicles. Use a compound booking.";
-    }
-    if (data.luggageSize === "small" && data.luggageCount > 2) {
-      return "6 passengers can only travel with up to 2 small suitcases in one vehicle. Use a compound booking.";
-    }
-  }
-
-  if (data.passengerCount <= 4 && data.luggageSize === "large" && data.luggageCount > 2) {
-    return "This luggage exceeds standard single-vehicle capacity. Use a compound booking or reduce luggage.";
-  }
-
-  if (data.passengerCount <= 8 && data.luggageSize === "large" && data.luggageCount > 4) {
-    return "8-seat capacity is limited to 4 large suitcases. Additional hand luggage may need to be carried in the cabin.";
-  }
-
-  if (data.passengerCount <= 8 && data.luggageSize === "medium" && data.luggageCount > 6) {
-    return "8-seat capacity is limited to 6 medium suitcases.";
-  }
-
-  if (data.passengerCount <= 8 && data.luggageSize === "small" && data.luggageCount > 8) {
-    return "8-seat capacity is limited to 8 small suitcases.";
-  }
-
+      if (data.phoneConfirmed === "no" && !data.preferredPhone) {
+  return "Enter the preferred contact number.";
+}
   return "";
 }
 
@@ -1421,64 +1833,55 @@ function combineUkDateAndTime(dateValue, timeValue) {
       }
     }
 
-    async function createJobDocuments(data) {
+    async function createJobDocuments(data, quote) {
   const groupId = generateGroupId();
-  const scheduledAt = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
 
   const basePayload = {
     source: "admin",
     customerName: data.customerName,
-    customerPhone: data.customerPhone,
-    customerPhoneVerified: data.phoneConfirmed === "yes",
+    customerPhoneOriginal: data.customerPhone,
+    customerPhonePreferred: data.phoneConfirmed === "yes" ? data.customerPhone : data.preferredPhone,
+    usePreferredContact: data.phoneConfirmed === "no" ? Boolean(data.preferredPhone) : true,
+    customerPhoneVerified: true,
     pickupAddress: data.pickupAddress,
     dropoffAddress: data.dropoffAddress,
     scheduledDate: data.scheduledDate,
     scheduledTime: data.scheduledTime,
-    scheduledAt,
-    passengerCount: data.passengerCount,
+    scheduledAt: quote.scheduledAt,
     petsRequired: data.petsRequired === "yes",
-    luggageSize: data.luggageSize,
-    luggageCount: data.luggageCount,
     notes: data.notes,
     acceptedByDriverId: "",
     feeCharged: false,
     status: "pending",
+    quotedPriceInitial: quote.quotedPriceInitial,
+    quotedPriceCurrent: quote.quotedPriceCurrent,
+    hcPrice: quote.hcPrice,
+    phPrice: quote.phPrice,
+    liveQuotedPrice: quote.liveQuotedPrice,
+    distanceMiles: Number(quote.distanceMiles.toFixed(2)),
+    isShortJob: quote.distanceMiles <= 3,
+    phOnlyUntil: quote.distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
+    compound: quote.vehiclePlan.vehicles.length > 1,
+    totalPrice: quote.totalPrice,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     createdBy: normaliseEmail(auth.currentUser?.email),
     lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
   };
 
-  const needsCompound =
-    data.passengerCount === 6 &&
-    (
-      data.luggageSize === "medium" ||
-      data.luggageSize === "large" ||
-      (data.luggageSize === "small" && data.luggageCount > 2)
-    );
+  for (let i = 0; i < quote.vehiclePlan.vehicles.length; i++) {
+    const vehicle = quote.vehiclePlan.vehicles[i];
 
-  if (!needsCompound) {
     await addDoc(collection(db, "jobs"), {
       ...basePayload,
       groupId,
-      partIndex: 1,
-      totalParts: 1
-    });
-    return;
-  }
-
-  const parts = [
-    { partIndex: 1, passengerCount: 3 },
-    { partIndex: 2, passengerCount: 3 }
-  ];
-
-  for (const part of parts) {
-    await addDoc(collection(db, "jobs"), {
-      ...basePayload,
-      groupId,
-      partIndex: part.partIndex,
-      totalParts: 2,
-      passengerCount: part.passengerCount
+      partIndex: i + 1,
+      totalParts: quote.vehiclePlan.vehicles.length,
+      passengerCount: vehicle.passengers,
+      luggageSize: vehicle.luggageSize,
+      luggageCount: vehicle.luggageCount,
+      requiredSeats: vehicle.capacity,
+      vehiclePrice: vehicle.price
     });
   }
 }
@@ -1496,13 +1899,27 @@ function combineUkDateAndTime(dateValue, timeValue) {
   }
 
   try {
-    await createJobDocuments(data);
+    const quote = await calculateManualQuote();
+
+    if (!quote) {
+      setManualBookingMessage("Unable to calculate a valid quote for this booking.", "error");
+      return;
+    }
+
+    if (quote.vehiclePlan.warning) {
+      const proceed = window.confirm(quote.vehiclePlan.warning);
+      if (!proceed) return;
+    }
+
+    await createJobDocuments(data, quote);
+
     setManualBookingMessage("Booking created successfully.", "success");
     manualBookingForm.reset();
     document.getElementById("manualPhoneConfirmed").value = "yes";
     document.getElementById("manualPetsRequired").value = "no";
     document.getElementById("manualLuggageSize").value = "none";
     document.getElementById("manualLuggageCount").value = "0";
+    renderManualQuote(null);
     await loadJobs();
   } catch (error) {
     console.error(error);
@@ -1674,7 +2091,7 @@ if (action === "confirm-wallet") {
   const pickupInput = document.getElementById("manualPickupAddress");
   const dropoffInput = document.getElementById("manualDropoffAddress");
 
-  if (!pickupInput || !dropoffInput) return;
+  if (!pickupInput || !dropoffInput || !window.google || !google.maps?.places) return;
 
   const options = {
     types: ["geocode"],
@@ -1686,14 +2103,18 @@ if (action === "confirm-wallet") {
 
   pickupAutocomplete.addListener("place_changed", () => {
     const place = pickupAutocomplete.getPlace();
-    if (!place.formatted_address) return;
-    pickupInput.value = place.formatted_address;
+    if (place.formatted_address) {
+      pickupInput.value = place.formatted_address;
+      calculateManualQuote();
+    }
   });
 
   dropoffAutocomplete.addListener("place_changed", () => {
     const place = dropoffAutocomplete.getPlace();
-    if (!place.formatted_address) return;
-    dropoffInput.value = place.formatted_address;
+    if (place.formatted_address) {
+      dropoffInput.value = place.formatted_address;
+      calculateManualQuote();
+    }
   });
 }
 
@@ -1716,6 +2137,24 @@ resetManualBookingBtn.addEventListener("click", () => {
   document.getElementById("manualLuggageSize").value = "none";
   document.getElementById("manualLuggageCount").value = "0";
   setManualBookingMessage("");
+  renderManualQuote(null);
+});
+
+[
+  "manualPickupAddress",
+  "manualDropoffAddress",
+  "manualScheduledDate",
+  "manualScheduledTime",
+  "manualPassengerCount",
+  "manualPetsRequired",
+  "manualLuggageSize",
+  "manualLuggageCount"
+].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener("change", calculateManualQuote);
+    el.addEventListener("blur", calculateManualQuote);
+  }
 });
 
 driverSearch.addEventListener("input", () => renderDrivers(cachedDrivers));
