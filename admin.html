@@ -2094,7 +2094,6 @@ if (action === "confirm-wallet") {
   if (!pickupInput || !dropoffInput || !window.google || !google.maps?.places) return;
 
   const options = {
-    types: ["geocode"],
     componentRestrictions: { country: "gb" }
   };
 
