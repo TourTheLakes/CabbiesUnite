@@ -1024,6 +1024,7 @@
   getFirestore,
   collection,
   addDoc,
+  getDoc,
   getDocs,
   query,
   orderBy,
@@ -1526,19 +1527,6 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
     }
-
-    function nowIso() {
-  return new Date().toISOString();
-}
-
-function buildLifecycleEntry(event, detail = "", actor = "") {
-  return {
-    event,
-    detail,
-    actor: actor || normaliseEmail(auth.currentUser?.email) || "system",
-    at: nowIso()
-  };
-}
 
 function getSafeLifecycle(existing) {
   return Array.isArray(existing) ? [...existing] : [];
