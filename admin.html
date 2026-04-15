@@ -1029,8 +1029,7 @@
   orderBy,
   serverTimestamp,
   doc,
-  updateDoc,
-  getDoc
+  updateDoc
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -1613,6 +1612,79 @@ function getBookingDisplayStatus(primary, parts) {
   if (acceptedCount > 0 && acceptedCount < total) return "Partially Accepted";
   if (acceptedCount === total && total > 0) return "Confirmed";
   return "Pending";
+}
+
+    function getChangedFields(original, updated) {
+  const changes = [];
+
+  const definitions = [
+    ["customerName", "Customer name"],
+    ["customerPhonePreferred", "Preferred contact number"],
+    ["notes", "Notes"],
+    ["pickupAddress", "Pickup address"],
+    ["dropoffAddress", "Dropoff address"],
+    ["scheduledDate", "Date"],
+    ["scheduledTime", "Time"],
+    ["passengerCount", "Passenger count"],
+    ["petsRequired", "Pets required"],
+    ["luggageSize", "Luggage size"],
+    ["luggageCount", "Luggage count"]
+  ];
+
+  definitions.forEach(([field, label]) => {
+    let beforeValue = original[field];
+    let afterValue = updated[field];
+
+    if (field === "petsRequired") {
+      beforeValue = beforeValue ? "yes" : "no";
+      afterValue = afterValue ? "yes" : "no";
+    }
+
+    if (field === "passengerCount" || field === "luggageCount") {
+      beforeValue = Number(beforeValue || 0);
+      afterValue = Number(afterValue || 0);
+    }
+
+    beforeValue = String(beforeValue ?? "").trim();
+    afterValue = String(afterValue ?? "").trim();
+
+    if (beforeValue !== afterValue) {
+      changes.push({
+        field,
+        label,
+        before: beforeValue || "-",
+        after: afterValue || "-"
+      });
+    }
+  });
+
+  return changes;
+}
+
+function buildLifecycleEntry(event, detail, extra = {}) {
+  return {
+    event,
+    detail,
+    actor: normaliseEmail(auth.currentUser?.email) || "admin",
+    at: new Date().toISOString(),
+    ...extra
+  };
+}
+
+function formatLifecycleTimestamp(value) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 }
 
     function isOperationalChange(original, updated) {
@@ -2549,14 +2621,32 @@ async function loadJobs() {
     return `<div class="job-life-entry"><div>No lifecycle entries yet.</div></div>`;
   }
 
-  return lifecycle.map((entry) => `
-    <div class="job-life-entry">
-      <div><strong>${escapeHtml(entry.event || "Event")}</strong></div>
-      <div>${escapeHtml(entry.detail || "-")}</div>
-      <div>${escapeHtml(entry.actor || "-")}</div>
-      <div>${escapeHtml(entry.at || "-")}</div>
-    </div>
-  `).join("");
+  return lifecycle.slice().reverse().map((entry) => {
+    const changes = Array.isArray(entry.changes) ? entry.changes : [];
+
+    return `
+      <div class="job-life-entry">
+        <div><strong>${escapeHtml(entry.event || "Event")}</strong></div>
+        <div>${escapeHtml(entry.detail || "-")}</div>
+        <div>${escapeHtml(entry.actor || "-")}</div>
+        <div>${escapeHtml(formatLifecycleTimestamp(entry.at || "-"))}</div>
+        ${
+          changes.length
+            ? `
+              <div style="display:grid; gap:4px; margin-top:6px;">
+                ${changes.map((change) => `
+                  <div>
+                    ${escapeHtml(change.label)}:
+                    ${escapeHtml(change.before)} → ${escapeHtml(change.after)}
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : ""
+        }
+      </div>
+    `;
+  }).join("");
 }
 
   function buildSection(title, bookings) {
@@ -2755,10 +2845,10 @@ async function loadJobs() {
   </div>
 
   <div class="job-actions">
-    <button class="btn secondary small" type="button">Amend Booking</button>
-    <button class="btn secondary small" type="button">Fee Override</button>
-    <button class="btn secondary small" type="button">Cancel Booking</button>
-  </div>
+  <button class="btn secondary small" type="button" data-job-action="amend">Amend Booking</button>
+  <button class="btn secondary small" type="button" data-job-action="fee-override">Fee Override</button>
+  <button class="btn secondary small" type="button" data-job-action="cancel">Cancel Booking</button>
+</div>
 </div>
 `;
         }).join("")}
@@ -2773,10 +2863,9 @@ async function loadJobs() {
   `;
 
 [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
-  const buttons = card.querySelectorAll(".job-actions button");
-  const amendBtn = buttons[0];
-  const feeBtn = buttons[1];
-  const cancelBtn = buttons[2];
+  const amendBtn = card.querySelector('[data-job-action="amend"]');
+  const feeOverrideBtn = card.querySelector('[data-job-action="fee-override"]');
+  const cancelBtn = card.querySelector('[data-job-action="cancel"]');
 
   const stopCollapseSelectors = "button, input, select, textarea, .edit-field, .job-expanded";
 
@@ -2806,6 +2895,7 @@ async function loadJobs() {
 
     const groupId = card.dataset.jobGroup;
     const booking = groupedBookings.find((b) => b.groupId === groupId);
+
     if (!booking) return;
 
     const primary = booking.primary;
@@ -2817,6 +2907,7 @@ async function loadJobs() {
       card.querySelectorAll(".view-field").forEach((el) => {
         const field = el.dataset.field;
         const value = el.textContent;
+
         let input;
 
         if (field === "petsRequired") {
@@ -2840,6 +2931,7 @@ async function loadJobs() {
 
           if (field === "scheduledDate") {
             input.type = "date";
+
             const parts = String(value || "").split("/");
             if (parts.length === 3) {
               const [day, month, year] = parts;
@@ -2862,6 +2954,7 @@ async function loadJobs() {
 
         input.className = "edit-field";
         input.dataset.field = field;
+
         input.addEventListener("click", (event) => event.stopPropagation());
         input.addEventListener("mousedown", (event) => event.stopPropagation());
         input.addEventListener("mouseup", (event) => event.stopPropagation());
@@ -2893,35 +2986,53 @@ async function loadJobs() {
       updated[field] = value;
     });
 
-    const operational = isOperationalChange(primary, updated);
-    const lifecycle = getSafeLifecycle(primary.lifecycle);
+    const changedFields = getChangedFields(primary, updated);
 
-    lifecycle.push(
+    if (!changedFields.length) {
+      await loadJobs();
+      editMode = false;
+      return;
+    }
+
+    const operational = isOperationalChange(primary, updated);
+
+    const nextLifecycle = [
+      ...(Array.isArray(primary.lifecycle) ? primary.lifecycle : []),
       buildLifecycleEntry(
         "amended",
         operational ? "Operational admin amendment" : "Non-operational admin amendment",
-        normaliseEmail(auth.currentUser?.email)
+        { changes: changedFields }
       )
-    );
+    ];
 
     const updates = {
       ...updated,
-      lifecycle,
+      lifecycle: nextLifecycle,
       updatedAt: serverTimestamp(),
       lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
     };
 
-    try {
-      if (operational && primary.acceptedByDriverId) {
-        await dethroneBookingIfOccupied(
-          booking,
-          "Booking operational details changed by admin.",
-          "pending"
-        );
-      }
+    if (operational && primary.acceptedByDriverId) {
+      updates.acceptedByDriverId = "";
+      updates.status = "pending";
+      updates.feeCharged = false;
+    }
 
+    try {
       for (const part of booking.parts) {
-        await updateDoc(doc(db, "jobs", part.id), updates);
+        const partUpdates = {
+          ...updates,
+          lifecycle: [
+            ...(Array.isArray(part.lifecycle) ? part.lifecycle : []),
+            buildLifecycleEntry(
+              "amended",
+              operational ? "Operational admin amendment" : "Non-operational admin amendment",
+              { changes: changedFields }
+            )
+          ]
+        };
+
+        await updateDoc(doc(db, "jobs", part.id), partUpdates);
       }
 
       await loadJobs();
@@ -2932,12 +3043,13 @@ async function loadJobs() {
     editMode = false;
   });
 
-  if (feeBtn) {
-    feeBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
+  if (feeOverrideBtn) {
+    feeOverrideBtn.addEventListener("click", async (event) => {
+      event.stopPropagation();
 
       const groupId = card.dataset.jobGroup;
       const booking = groupedBookings.find((b) => b.groupId === groupId);
+
       if (!booking) return;
 
       const primary = booking.primary;
@@ -2947,42 +3059,46 @@ async function loadJobs() {
         return;
       }
 
-      const currentAmount = Number(primary.effectiveFee || 0);
-      const raw = window.prompt(
-        "Enter override fee per vehicle. Use 0 to waive. Leave blank to cancel.",
-        currentAmount ? String(currentAmount) : ""
-      );
+      const currentValue = Number(primary.effectiveFee ?? primary.platformFee ?? 0);
+      const raw = window.prompt("Enter per-part override fee in pounds. Use 0 to waive.", String(currentValue.toFixed(2)));
 
       if (raw === null) return;
 
       const amount = Number(raw);
+
       if (!Number.isFinite(amount) || amount < 0) {
         window.alert("Enter a valid fee amount of 0 or more.");
         return;
       }
 
-      const lifecycle = getSafeLifecycle(primary.lifecycle);
-      lifecycle.push(
-        buildLifecycleEntry(
-          "fee_override",
-          amount === 0
-            ? "Fee waived by admin"
-            : `Fee overridden by admin to £${amount.toFixed(2)} per vehicle`,
-          normaliseEmail(auth.currentUser?.email)
-        )
+      const lifecycleEntry = buildLifecycleEntry(
+        "fee_override",
+        amount === 0 ? "Admin waived platform fee" : "Admin overrode platform fee",
+        {
+          changes: [
+            {
+              label: "Per-part fee",
+              before: String(currentValue.toFixed(2)),
+              after: String(amount.toFixed(2))
+            }
+          ]
+        }
       );
-
-      const updates = {
-        feeOverrideApplied: true,
-        effectiveFee: Number(amount.toFixed(2)),
-        lifecycle,
-        updatedAt: serverTimestamp(),
-        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-      };
 
       try {
         for (const part of booking.parts) {
-          await updateDoc(doc(db, "jobs", part.id), updates);
+          const nextLifecycle = [
+            ...(Array.isArray(part.lifecycle) ? part.lifecycle : []),
+            lifecycleEntry
+          ];
+
+          await updateDoc(doc(db, "jobs", part.id), {
+            feeOverrideApplied: true,
+            effectiveFee: Number(amount.toFixed(2)),
+            lifecycle: nextLifecycle,
+            updatedAt: serverTimestamp(),
+            lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+          });
         }
 
         await loadJobs();
@@ -2993,41 +3109,39 @@ async function loadJobs() {
   }
 
   if (cancelBtn) {
-    cancelBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
+    cancelBtn.addEventListener("click", async (event) => {
+      event.stopPropagation();
 
       const groupId = card.dataset.jobGroup;
       const booking = groupedBookings.find((b) => b.groupId === groupId);
+
       if (!booking) return;
 
-      const primary = booking.primary;
-      const confirmed = window.confirm(`Cancel booking ${primary.groupId}?`);
+      const reason = window.prompt("Enter cancellation reason");
+      if (reason === null) return;
+
+      const trimmedReason = String(reason || "").trim();
+      if (!trimmedReason) {
+        window.alert("Cancellation reason is required.");
+        return;
+      }
+
+      const confirmed = window.confirm("Cancel this booking?");
       if (!confirmed) return;
 
       try {
-        if (primary.acceptedByDriverId) {
-          await dethroneBookingIfOccupied(
-            booking,
-            "Booking cancelled by admin.",
-            "pending"
-          );
-        }
-
         for (const part of booking.parts) {
-          const partLifecycle = getSafeLifecycle(part.lifecycle);
-          partLifecycle.push(
-            buildLifecycleEntry(
-              "cancelled",
-              "Booking cancelled by admin",
-              normaliseEmail(auth.currentUser?.email)
-            )
-          );
+          const nextLifecycle = [
+            ...(Array.isArray(part.lifecycle) ? part.lifecycle : []),
+            buildLifecycleEntry("cancelled", `Admin cancelled booking: ${trimmedReason}`)
+          ];
 
           await updateDoc(doc(db, "jobs", part.id), {
             status: "cancelled",
-            cancelledAt: serverTimestamp(),
-            cancelledBy: normaliseEmail(auth.currentUser?.email),
-            lifecycle: partLifecycle,
+            cancellationReason: trimmedReason,
+            acceptedByDriverId: "",
+            feeCharged: false,
+            lifecycle: nextLifecycle,
             updatedAt: serverTimestamp(),
             lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
           });
