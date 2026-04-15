@@ -634,6 +634,31 @@
   gap: 4px;
 }
 
+    .inline-fee-editor {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inline-fee-editor.active {
+  display: flex;
+}
+
+.inline-fee-editor label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.inline-fee-editor input {
+  width: 120px;
+  background: #0f0f0f;
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  min-height: 38px;
+}
+
 @media (max-width: 860px) {
   .job-section-grid {
     grid-template-columns: 1fr;
@@ -2667,9 +2692,9 @@ function buildSection(title, bookings) {
             : calculateDriverFeeFromJobValue(primary.totalPrice, buildAdminFeeOverrideState(primary))
         ).toFixed(2);
 
-        const feeLabel = primary.feeOverrideApplied
-          ? `Waived / Overridden (£${feeAmount})`
-          : `System £${feeAmount} (${primary.feeCharged ? "Charged" : "Pending"})`;
+        const feePillLabel = primary.feeOverrideApplied
+          ? `Override £${feeAmount}`
+          : `Fee £${feeAmount}`;
 
         return `
           <div class="job-card" data-job-group="${escapeHtml(groupId)}">
@@ -2680,6 +2705,7 @@ function buildSection(title, bookings) {
               </div>
 
               <div class="pill-row">
+                <span class="pill">${escapeHtml(feePillLabel)}</span>
                 <span class="pill">${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}</span>
                 <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
                 <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
@@ -2704,7 +2730,7 @@ function buildSection(title, bookings) {
               <div class="job-row">
                 <span>HC £${Number(primary.hcPrice || 0).toFixed(2)}</span>
                 <span>PH £${Number(primary.phPrice || 0).toFixed(2)}</span>
-                <span>${escapeHtml(feeLabel)}</span>
+                <span></span>
               </div>
 
               <div class="job-row">
@@ -2844,6 +2870,11 @@ function buildSection(title, bookings) {
                 <button class="btn secondary small" type="button" data-job-action="amend">Amend Booking</button>
                 <button class="btn secondary small" type="button" data-job-action="fee-override">Fee Override</button>
                 <button class="btn secondary small" type="button" data-job-action="cancel">Cancel Booking</button>
+
+                <div class="inline-fee-editor" data-fee-editor>
+                  <label>Per-part fee £</label>
+                  <input type="number" min="0" step="0.01" data-fee-input value="${feeAmount}">
+                </div>
               </div>
             </div>
           </div>
@@ -3046,69 +3077,88 @@ function buildSection(title, bookings) {
   });
 
   if (feeOverrideBtn) {
-    feeOverrideBtn.addEventListener("click", async (event) => {
-      event.stopPropagation();
+  let feeEditMode = false;
 
-      const groupId = card.dataset.jobGroup;
-      const booking = groupedBookings.find((b) => b.groupId === groupId);
+  feeOverrideBtn.addEventListener("click", async (event) => {
+    event.stopPropagation();
 
-      if (!booking) return;
+    const groupId = card.dataset.jobGroup;
+    const booking = groupedBookings.find((b) => b.groupId === groupId);
 
-      const primary = booking.primary;
+    if (!booking) return;
 
-      if (primary.acceptedByDriverId) {
-        window.alert("Fee override can only be changed while the booking is still on the wall.");
-        return;
+    const primary = booking.primary;
+
+    if (primary.acceptedByDriverId) {
+      window.alert("Fee override can only be changed while the booking is still on the wall.");
+      return;
+    }
+
+    const feeEditor = card.querySelector("[data-fee-editor]");
+    const feeInput = card.querySelector("[data-fee-input]");
+
+    if (!feeEditor || !feeInput) return;
+
+    const currentValue = Number(
+      primary.feeOverrideApplied
+        ? (primary.effectiveFee || 0)
+        : calculateDriverFeeFromJobValue(primary.totalPrice, buildAdminFeeOverrideState(primary))
+    );
+
+    if (!feeEditMode) {
+      feeEditMode = true;
+      feeEditor.classList.add("active");
+      feeInput.value = currentValue.toFixed(2);
+      feeOverrideBtn.textContent = "Save Override";
+      feeInput.focus();
+      feeInput.select();
+      return;
+    }
+
+    const amount = Number(feeInput.value);
+
+    if (!Number.isFinite(amount) || amount < 0) {
+      window.alert("Enter a valid fee amount of 0 or more.");
+      return;
+    }
+
+    const lifecycleEntry = buildLifecycleEntry(
+      "fee_override",
+      amount === 0 ? "Admin waived platform fee" : "Admin overrode platform fee",
+      {
+        changes: [
+          {
+            label: "Per-part fee",
+            before: String(currentValue.toFixed(2)),
+            after: String(amount.toFixed(2))
+          }
+        ]
+      }
+    );
+
+    try {
+      for (const part of booking.parts) {
+        const nextLifecycle = [
+          ...(Array.isArray(part.lifecycle) ? part.lifecycle : []),
+          lifecycleEntry
+        ];
+
+        await updateDoc(doc(db, "jobs", part.id), {
+          feeOverrideApplied: true,
+          effectiveFee: Number(amount.toFixed(2)),
+          lifecycle: nextLifecycle,
+          updatedAt: serverTimestamp(),
+          lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+        });
       }
 
-      const currentValue = Number(primary.effectiveFee ?? primary.platformFee ?? 0);
-      const raw = window.prompt("Enter per-part override fee in pounds. Use 0 to waive.", String(currentValue.toFixed(2)));
-
-      if (raw === null) return;
-
-      const amount = Number(raw);
-
-      if (!Number.isFinite(amount) || amount < 0) {
-        window.alert("Enter a valid fee amount of 0 or more.");
-        return;
-      }
-
-      const lifecycleEntry = buildLifecycleEntry(
-        "fee_override",
-        amount === 0 ? "Admin waived platform fee" : "Admin overrode platform fee",
-        {
-          changes: [
-            {
-              label: "Per-part fee",
-              before: String(currentValue.toFixed(2)),
-              after: String(amount.toFixed(2))
-            }
-          ]
-        }
-      );
-
-      try {
-        for (const part of booking.parts) {
-          const nextLifecycle = [
-            ...(Array.isArray(part.lifecycle) ? part.lifecycle : []),
-            lifecycleEntry
-          ];
-
-          await updateDoc(doc(db, "jobs", part.id), {
-            feeOverrideApplied: true,
-            effectiveFee: Number(amount.toFixed(2)),
-            lifecycle: nextLifecycle,
-            updatedAt: serverTimestamp(),
-            lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-          });
-        }
-
-        await loadJobs();
-      } catch (err) {
-        console.error("Failed to override fee", err);
-      }
-    });
-  }
+      feeEditMode = false;
+      await loadJobs();
+    } catch (err) {
+      console.error("Failed to override fee", err);
+    }
+  });
+}
 
   if (cancelBtn) {
     cancelBtn.addEventListener("click", async (event) => {
