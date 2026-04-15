@@ -2639,6 +2639,20 @@ async function loadJobs() {
   });
 });
 
+    [...jobsList.querySelectorAll(".job-card input, .job-card select, .job-card textarea")].forEach((el) => {
+  el.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  el.addEventListener("mousedown", (event) => {
+    event.stopPropagation();
+  });
+
+  el.addEventListener("mouseup", (event) => {
+    event.stopPropagation();
+  });
+});
+
     [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
   const amendBtn = card.querySelector(".job-actions button");
 
@@ -2667,25 +2681,46 @@ async function loadJobs() {
         let input;
 
         if (field === "petsRequired") {
-          input = document.createElement("select");
-          input.innerHTML = `
-            <option value="yes">yes</option>
-            <option value="no">no</option>
-          `;
-          input.value = value.toLowerCase();
-        } else if (field === "luggageSize") {
-          input = document.createElement("select");
-          input.innerHTML = `
-            <option value="none">none</option>
-            <option value="small">small</option>
-            <option value="medium">medium</option>
-            <option value="large">large</option>
-          `;
-          input.value = value.toLowerCase();
-        } else {
-          input = document.createElement("input");
-          input.value = value === "-" ? "" : value;
-        }
+  input = document.createElement("select");
+  input.innerHTML = `
+    <option value="yes">yes</option>
+    <option value="no">no</option>
+  `;
+  input.value = value.toLowerCase();
+} else if (field === "luggageSize") {
+  input = document.createElement("select");
+  input.innerHTML = `
+    <option value="none">none</option>
+    <option value="small">small</option>
+    <option value="medium">medium</option>
+    <option value="large">large</option>
+  `;
+  input.value = value.toLowerCase();
+} else {
+  input = document.createElement("input");
+
+  if (field === "scheduledDate") {
+    input.type = "date";
+
+    const parts = String(value || "").split("/");
+    if (parts.length === 3) {
+      const [day, month, year] = parts;
+      input.value = `${year}-${month}-${day}`;
+    } else {
+      input.value = "";
+    }
+  } else if (field === "scheduledTime") {
+    input.type = "time";
+    input.value = value === "-" ? "" : value;
+  } else if (field === "passengerCount" || field === "luggageCount") {
+    input.type = "number";
+    input.min = "0";
+    input.value = value === "-" ? "" : value;
+  } else {
+    input.type = "text";
+    input.value = value === "-" ? "" : value;
+  }
+}
 
         input.className = "edit-field";
         input.dataset.field = field;
@@ -2700,19 +2735,23 @@ async function loadJobs() {
     const updated = { ...primary };
 
     card.querySelectorAll(".edit-field").forEach((input) => {
-      const field = input.dataset.field;
-      let value = input.value;
+  const field = input.dataset.field;
+  let value = input.value;
 
-      if (field === "passengerCount" || field === "luggageCount") {
-        value = Number(value || 0);
-      }
+  if (field === "scheduledDate") {
+    value = formatIsoDateToUk(value);
+  }
 
-      if (field === "petsRequired") {
-        value = value === "yes";
-      }
+  if (field === "passengerCount" || field === "luggageCount") {
+    value = Number(value || 0);
+  }
 
-      updated[field] = value;
-    });
+  if (field === "petsRequired") {
+    value = value === "yes";
+  }
+
+  updated[field] = value;
+});
 
     const operational = isOperationalChange(primary, updated);
 
