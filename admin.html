@@ -2442,7 +2442,7 @@ async function loadJobs() {
 
           return `
             <div class="job-card" data-job-group="${escapeHtml(groupId)}">
-              <div class="job-header">
+              <div class="job-header job-toggle">
                 <div class="job-title">
                   <strong>Booking ${escapeHtml(groupId)}</strong>
                   <span>${escapeHtml(groupStatus)}</span>
@@ -2455,29 +2455,31 @@ async function loadJobs() {
                 </div>
               </div>
 
-              <div class="job-row">
-                <span>${escapeHtml(primary.pickupAddress || "")}</span>
-              </div>
+              <div class="job-toggle">
+  <div class="job-row">
+    <span>${escapeHtml(primary.pickupAddress || "")}</span>
+  </div>
 
-              <div class="job-row">
-                <span>${escapeHtml(primary.dropoffAddress || "")}</span>
-              </div>
+  <div class="job-row">
+    <span>${escapeHtml(primary.dropoffAddress || "")}</span>
+  </div>
 
-              <div class="job-row">
-                <span>${Number(primary.passengerCount || 0)} passengers</span>
-                <span>${escapeHtml(primary.luggageSize || "none")} (${Number(primary.luggageCount || 0)})</span>
-                <span>${primary.petsRequired ? "Pets" : "No pets"}</span>
-              </div>
+  <div class="job-row">
+    <span>${Number(primary.passengerCount || 0)} passengers</span>
+    <span>${escapeHtml(primary.luggageSize || "none")} (${Number(primary.luggageCount || 0)})</span>
+    <span>${primary.petsRequired ? "Pets" : "No pets"}</span>
+  </div>
 
-              <div class="job-row">
-                <span>HC £${Number(primary.hcPrice || 0).toFixed(2)}</span>
-                <span>PH £${Number(primary.phPrice || 0).toFixed(2)}</span>
-                <span>${escapeHtml(feeLabel)}</span>
-              </div>
+  <div class="job-row">
+    <span>HC £${Number(primary.hcPrice || 0).toFixed(2)}</span>
+    <span>PH £${Number(primary.phPrice || 0).toFixed(2)}</span>
+    <span>${escapeHtml(feeLabel)}</span>
+  </div>
 
-              <div class="job-row">
-  <span>Driver: ${escapeHtml(primary.acceptedByDriverId || "On wall")}</span>
-  <span>Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</span>
+  <div class="job-row">
+    <span>Driver: ${escapeHtml(primary.acceptedByDriverId || "On wall")}</span>
+    <span>Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</span>
+  </div>
 </div>
 
 <div class="job-expanded">
@@ -2623,38 +2625,41 @@ async function loadJobs() {
     ${buildSection("Cancelled Jobs", cancelledBookings)}
   `;
 
-  [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
-  card.addEventListener("click", (event) => {
-    if (
-      event.target.closest("button") ||
-      event.target.closest("input") ||
-      event.target.closest("select") ||
-      event.target.closest("textarea") ||
-      event.target.closest(".edit-field")
-    ) {
-      return;
-    }
+[...jobsList.querySelectorAll(".job-card")].forEach((card) => {
+  const amendBtn = card.querySelector(".job-actions button");
 
+  const stopCollapseSelectors = "button, input, select, textarea, .edit-field, .job-expanded";
+
+  card.addEventListener("click", (event) => {
+    if (event.target.closest(stopCollapseSelectors)) return;
     card.classList.toggle("expanded");
   });
-});
 
-    [...jobsList.querySelectorAll(".job-card input, .job-card select, .job-card textarea")].forEach((el) => {
-  el.addEventListener("click", (event) => {
-    event.stopPropagation();
+  card.addEventListener("mousedown", (event) => {
+    if (event.target.closest(stopCollapseSelectors)) {
+      event.stopPropagation();
+    }
   });
 
-  el.addEventListener("mousedown", (event) => {
-    event.stopPropagation();
+  card.addEventListener("mouseup", (event) => {
+    if (event.target.closest(stopCollapseSelectors)) {
+      event.stopPropagation();
+    }
   });
 
-  el.addEventListener("mouseup", (event) => {
-    event.stopPropagation();
-  });
-});
+  [...card.querySelectorAll("input, select, textarea")].forEach((el) => {
+    el.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
 
-    [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
-  const amendBtn = card.querySelector(".job-actions button");
+    el.addEventListener("mousedown", (event) => {
+      event.stopPropagation();
+    });
+
+    el.addEventListener("mouseup", (event) => {
+      event.stopPropagation();
+    });
+  });
 
   if (!amendBtn) return;
 
@@ -2664,7 +2669,7 @@ async function loadJobs() {
     e.stopPropagation();
 
     const groupId = card.dataset.jobGroup;
-    const booking = groupedBookings.find(b => b.groupId === groupId);
+    const booking = groupedBookings.find((b) => b.groupId === groupId);
 
     if (!booking) return;
 
@@ -2681,55 +2686,109 @@ async function loadJobs() {
         let input;
 
         if (field === "petsRequired") {
-  input = document.createElement("select");
-  input.innerHTML = `
-    <option value="yes">yes</option>
-    <option value="no">no</option>
-  `;
-  input.value = value.toLowerCase();
-} else if (field === "luggageSize") {
-  input = document.createElement("select");
-  input.innerHTML = `
-    <option value="none">none</option>
-    <option value="small">small</option>
-    <option value="medium">medium</option>
-    <option value="large">large</option>
-  `;
-  input.value = value.toLowerCase();
-} else {
-  input = document.createElement("input");
+          input = document.createElement("select");
+          input.innerHTML = `
+            <option value="yes">yes</option>
+            <option value="no">no</option>
+          `;
+          input.value = value.toLowerCase();
+        } else if (field === "luggageSize") {
+          input = document.createElement("select");
+          input.innerHTML = `
+            <option value="none">none</option>
+            <option value="small">small</option>
+            <option value="medium">medium</option>
+            <option value="large">large</option>
+          `;
+          input.value = value.toLowerCase();
+        } else {
+          input = document.createElement("input");
 
-  if (field === "scheduledDate") {
-    input.type = "date";
+          if (field === "scheduledDate") {
+            input.type = "date";
 
-    const parts = String(value || "").split("/");
-    if (parts.length === 3) {
-      const [day, month, year] = parts;
-      input.value = `${year}-${month}-${day}`;
-    } else {
-      input.value = "";
-    }
-  } else if (field === "scheduledTime") {
-    input.type = "time";
-    input.value = value === "-" ? "" : value;
-  } else if (field === "passengerCount" || field === "luggageCount") {
-    input.type = "number";
-    input.min = "0";
-    input.value = value === "-" ? "" : value;
-  } else {
-    input.type = "text";
-    input.value = value === "-" ? "" : value;
-  }
-}
+            const parts = String(value || "").split("/");
+            if (parts.length === 3) {
+              const [day, month, year] = parts;
+              input.value = `${year}-${month}-${day}`;
+            } else {
+              input.value = "";
+            }
+          } else if (field === "scheduledTime") {
+            input.type = "time";
+            input.value = value === "-" ? "" : value;
+          } else if (field === "passengerCount" || field === "luggageCount") {
+            input.type = "number";
+            input.min = "0";
+            input.value = value === "-" ? "" : value;
+          } else {
+            input.type = "text";
+            input.value = value === "-" ? "" : value;
+          }
+        }
 
         input.className = "edit-field";
         input.dataset.field = field;
+
+        input.addEventListener("click", (event) => event.stopPropagation());
+        input.addEventListener("mousedown", (event) => event.stopPropagation());
+        input.addEventListener("mouseup", (event) => event.stopPropagation());
 
         el.replaceWith(input);
       });
 
       return;
     }
+
+    const updated = { ...primary };
+
+    card.querySelectorAll(".edit-field").forEach((input) => {
+      const field = input.dataset.field;
+      let value = input.value;
+
+      if (field === "scheduledDate") {
+        value = formatIsoDateToUk(value);
+      }
+
+      if (field === "passengerCount" || field === "luggageCount") {
+        value = Number(value || 0);
+      }
+
+      if (field === "petsRequired") {
+        value = value === "yes";
+      }
+
+      updated[field] = value;
+    });
+
+    const operational = isOperationalChange(primary, updated);
+
+    const updates = {
+      ...updated,
+      updatedAt: serverTimestamp()
+    };
+
+    if (operational && primary.acceptedByDriverId) {
+      updates.acceptedByDriverId = "";
+      updates.status = "pending";
+      updates.feeCharged = false;
+
+      console.log("Dethroning driver for booking", primary.groupId);
+    }
+
+    try {
+      for (const part of booking.parts) {
+        await updateDoc(doc(db, "jobs", part.id), updates);
+      }
+
+      await loadJobs();
+    } catch (err) {
+      console.error("Failed to save booking changes", err);
+    }
+
+    editMode = false;
+  });
+});
 
     // SAVE MODE
     const updated = { ...primary };
