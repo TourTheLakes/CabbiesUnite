@@ -2661,9 +2661,15 @@ async function loadJobs() {
           if (String(primary.status || "").toLowerCase() === "cancelled") groupStatus = "Cancelled";
           if (["fulfilled", "completed"].includes(String(primary.status || "").toLowerCase())) groupStatus = "Completed";
 
-          const feeLabel = primary.feeOverrideApplied
-            ? `Waived / Overridden (£${Number(primary.effectiveFee || 0).toFixed(2)})`
-            : `System (${primary.feeCharged ? "Charged" : "Pending"})`;
+const feeAmount = Number(
+  primary.feeOverrideApplied
+    ? (primary.effectiveFee || 0)
+    : calculateDriverFeeFromJobValue(primary.totalPrice, buildAdminFeeOverrideState(primary))
+).toFixed(2);
+
+const feeLabel = primary.feeOverrideApplied
+  ? `Waived / Overridden (£${feeAmount})`
+  : `System £${feeAmount} (${primary.feeCharged ? "Charged" : "Pending"})`;
 
           return `
             <div class="job-card" data-job-group="${escapeHtml(groupId)}">
