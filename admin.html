@@ -2790,60 +2790,6 @@ async function loadJobs() {
   });
 });
 
-    // SAVE MODE
-    const updated = { ...primary };
-
-    card.querySelectorAll(".edit-field").forEach((input) => {
-  const field = input.dataset.field;
-  let value = input.value;
-
-  if (field === "scheduledDate") {
-    value = formatIsoDateToUk(value);
-  }
-
-  if (field === "passengerCount" || field === "luggageCount") {
-    value = Number(value || 0);
-  }
-
-  if (field === "petsRequired") {
-    value = value === "yes";
-  }
-
-  updated[field] = value;
-});
-
-    const operational = isOperationalChange(primary, updated);
-
-    const updates = {
-      ...updated,
-      updatedAt: serverTimestamp()
-    };
-
-    if (operational && primary.acceptedByDriverId) {
-      updates.acceptedByDriverId = "";
-      updates.status = "pending";
-      updates.feeCharged = false;
-
-      console.log("Dethroning driver for booking", primary.groupId);
-    }
-
-    try {
-      const updatesObj = {};
-      booking.parts.forEach((part) => {
-        updatesObj[`jobs/${part.id}`] = updates;
-      });
-
-      await update(ref(db), updatesObj);
-
-      loadJobs();
-    } catch (err) {
-      console.error("Failed to save booking changes", err);
-    }
-
-    editMode = false;
-  });
-});
-}
 
 document.getElementById("refreshJobsBtn").addEventListener("click", loadJobs);
     
