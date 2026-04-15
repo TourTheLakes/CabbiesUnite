@@ -1021,16 +1021,17 @@
       onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import {
-      getFirestore,
-      collection,
-      addDoc,
-      getDocs,
-      query,
-      orderBy,
-      serverTimestamp,
-      doc,
-      updateDoc
-    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+  serverTimestamp,
+  doc,
+  updateDoc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDzOY5kRe_NWwdr-Lz4CZlZJlbbqSQAvVE",
@@ -1527,6 +1528,93 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
         .replaceAll("'", "&#039;");
     }
 
+    function nowIso() {
+  return new Date().toISOString();
+}
+
+function buildLifecycleEntry(event, detail = "", actor = "") {
+  return {
+    event,
+    detail,
+    actor: actor || normaliseEmail(auth.currentUser?.email) || "system",
+    at: nowIso()
+  };
+}
+
+function getSafeLifecycle(existing) {
+  return Array.isArray(existing) ? [...existing] : [];
+}
+
+function calculateDriverFeeFromJobValue(totalPrice, override = null) {
+  if (override && override.applied) {
+    return Number(override.amount || 0);
+  }
+
+  const price = Number(totalPrice || 0);
+
+  if (price <= 10) return Number((price * 0.15).toFixed(2));
+  return Number((price * 0.05).toFixed(2));
+}
+
+async function createDriverNotification(driverId, payload) {
+  if (!driverId) return;
+
+  await addDoc(collection(db, "notifications"), {
+    driverId,
+    read: false,
+    createdAt: serverTimestamp(),
+    ...payload
+  });
+}
+
+async function refundDriverFee(driverId, amount, bookingGroupId, reason) {
+  if (!driverId || !Number.isFinite(amount) || amount <= 0) return;
+
+  const driverRef = doc(db, "drivers", driverId);
+  const snap = await getDoc(driverRef);
+
+  if (!snap.exists()) return;
+
+  const driver = snap.data();
+  const currentWallet = Number(driver.walletBalance || 0);
+  const nextWallet = Number((currentWallet + amount).toFixed(2));
+
+  await updateDoc(driverRef, {
+    walletBalance: nextWallet,
+    updatedAt: serverTimestamp(),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  });
+
+  await addDoc(collection(db, "walletTransactions"), {
+    driverId,
+    bookingGroupId,
+    type: "refund",
+    amount: Number(amount.toFixed(2)),
+    reason,
+    createdAt: serverTimestamp(),
+    createdBy: normaliseEmail(auth.currentUser?.email)
+  });
+}
+
+function buildAdminFeeOverrideState(primary) {
+  return {
+    applied: Boolean(primary.feeOverrideApplied),
+    amount: Number(primary.effectiveFee || 0)
+  };
+}
+
+function getBookingDisplayStatus(primary, parts) {
+  const status = String(primary.status || "").toLowerCase();
+  const total = parts.length;
+  const acceptedCount = parts.filter((p) => String(p.status || "").toLowerCase() === "accepted").length;
+
+  if (status === "cancelled") return "Cancelled";
+  if (status === "fulfilled" || status === "completed") return "Completed";
+  if (acceptedCount > 0 && acceptedCount < total) return "Partially Accepted";
+  if (acceptedCount === total && total > 0) return "Confirmed";
+  return "Pending";
+}
+
     function isOperationalChange(original, updated) {
   return (
     original.pickupAddress !== updated.pickupAddress ||
@@ -1538,6 +1626,57 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     String(original.luggageSize || "") !== String(updated.luggageSize || "") ||
     Number(original.luggageCount || 0) !== Number(updated.luggageCount || 0)
   );
+}
+
+    async function dethroneBookingIfOccupied(booking, reason, updatedStatus = "pending") {
+  const primary = booking.primary;
+  const acceptedDriverIds = [
+    ...new Set(
+      booking.parts
+        .map((part) => String(part.acceptedByDriverId || "").trim())
+        .filter(Boolean)
+    )
+  ];
+
+  const feeOverride = buildAdminFeeOverrideState(primary);
+  const refundAmountPerDriver = calculateDriverFeeFromJobValue(primary.totalPrice, feeOverride);
+
+  for (const driverId of acceptedDriverIds) {
+    await refundDriverFee(
+      driverId,
+      refundAmountPerDriver,
+      primary.groupId,
+      reason
+    );
+
+    await createDriverNotification(driverId, {
+      type: "job_dethroned",
+      title: "Booking changed",
+      message: `Booking ${primary.groupId} has changed. Your fee has been returned and the booking is back on the wall.`,
+      bookingGroupId: primary.groupId,
+      reason
+    });
+  }
+
+  for (const part of booking.parts) {
+    const nextLifecycle = getSafeLifecycle(part.lifecycle);
+    nextLifecycle.push(
+      buildLifecycleEntry(
+        "dethroned",
+        reason,
+        normaliseEmail(auth.currentUser?.email)
+      )
+    );
+
+    await updateDoc(doc(db, "jobs", part.id), {
+      acceptedByDriverId: "",
+      feeCharged: false,
+      status: updatedStatus,
+      lifecycle: nextLifecycle,
+      updatedAt: serverTimestamp(),
+      lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+    });
+  }
 }
 
     function generateGroupId() {
@@ -1956,37 +2095,44 @@ function getManualBookingFormData() {
   const groupId = generateGroupId();
 
   const basePayload = {
-    source: "admin",
-    customerName: data.customerName,
-    customerPhoneOriginal: data.customerPhone,
-    customerPhonePreferred: data.phoneConfirmed === "yes" ? data.customerPhone : data.preferredPhone,
-    usePreferredContact: data.phoneConfirmed === "no" ? Boolean(data.preferredPhone) : true,
-    customerPhoneVerified: true,
-    pickupAddress: data.pickupAddress,
-    dropoffAddress: data.dropoffAddress,
-    scheduledDate: data.scheduledDate,
-    scheduledTime: data.scheduledTime,
-    scheduledAt: quote.scheduledAt,
-    petsRequired: data.petsRequired === "yes",
-    notes: data.notes,
-    acceptedByDriverId: "",
-    feeCharged: false,
-    status: "pending",
-    quotedPriceInitial: quote.quotedPriceInitial,
-    quotedPriceCurrent: quote.quotedPriceCurrent,
-    hcPrice: quote.hcPrice,
-    phPrice: quote.phPrice,
-    liveQuotedPrice: quote.liveQuotedPrice,
-    distanceMiles: Number(quote.distanceMiles.toFixed(2)),
-    isShortJob: quote.distanceMiles <= 3,
-    phOnlyUntil: quote.distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
-    compound: quote.vehiclePlan.vehicles.length > 1,
-    totalPrice: quote.totalPrice,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    createdBy: normaliseEmail(auth.currentUser?.email),
-    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-  };
+  source: "admin",
+  customerName: data.customerName,
+  customerPhoneOriginal: data.customerPhone,
+  customerPhonePreferred: data.phoneConfirmed === "yes" ? data.customerPhone : data.preferredPhone,
+  usePreferredContact: data.phoneConfirmed === "no" ? Boolean(data.preferredPhone) : true,
+  customerPhoneVerified: true,
+  pickupAddress: data.pickupAddress,
+  dropoffAddress: data.dropoffAddress,
+  scheduledDate: data.scheduledDate,
+  scheduledTime: data.scheduledTime,
+  scheduledAt: quote.scheduledAt,
+  petsRequired: data.petsRequired === "yes",
+  notes: data.notes,
+  acceptedByDriverId: "",
+  feeCharged: false,
+  status: "pending",
+  quotedPriceInitial: quote.quotedPriceInitial,
+  quotedPriceCurrent: quote.quotedPriceCurrent,
+  hcPrice: quote.hcPrice,
+  phPrice: quote.phPrice,
+  liveQuotedPrice: quote.liveQuotedPrice,
+  distanceMiles: Number(quote.distanceMiles.toFixed(2)),
+  isShortJob: quote.distanceMiles <= 3,
+  phOnlyUntil: quote.distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
+  compound: quote.vehiclePlan.vehicles.length > 1,
+  totalPrice: quote.totalPrice,
+  lifecycle: [
+    buildLifecycleEntry(
+      "created",
+      "Booking created by admin in El’Manuel",
+      normaliseEmail(auth.currentUser?.email)
+    )
+  ],
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+  createdBy: normaliseEmail(auth.currentUser?.email),
+  lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+};
 
   for (let i = 0; i < quote.vehiclePlan.vehicles.length; i++) {
     const vehicle = quote.vehiclePlan.vehicles[i];
@@ -2397,20 +2543,21 @@ async function loadJobs() {
   });
 
   function buildLifecycleHtml(primary) {
-    const lifecycle = Array.isArray(primary.lifecycle) ? primary.lifecycle : [];
+  const lifecycle = Array.isArray(primary.lifecycle) ? primary.lifecycle : [];
 
-    if (!lifecycle.length) {
-      return `<div class="job-life-entry"><div>No lifecycle entries yet.</div></div>`;
-    }
-
-    return lifecycle.map((entry) => `
-      <div class="job-life-entry">
-        <div><strong>${escapeHtml(entry.event || "Event")}</strong></div>
-        <div>${escapeHtml(entry.actor || "-")}</div>
-        <div>${escapeHtml(entry.at || "-")}</div>
-      </div>
-    `).join("");
+  if (!lifecycle.length) {
+    return `<div class="job-life-entry"><div>No lifecycle entries yet.</div></div>`;
   }
+
+  return lifecycle.map((entry) => `
+    <div class="job-life-entry">
+      <div><strong>${escapeHtml(entry.event || "Event")}</strong></div>
+      <div>${escapeHtml(entry.detail || "-")}</div>
+      <div>${escapeHtml(entry.actor || "-")}</div>
+      <div>${escapeHtml(entry.at || "-")}</div>
+    </div>
+  `).join("");
+}
 
   function buildSection(title, bookings) {
     if (!bookings.length) {
@@ -2626,7 +2773,10 @@ async function loadJobs() {
   `;
 
 [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
-  const amendBtn = card.querySelector(".job-actions button");
+  const buttons = card.querySelectorAll(".job-actions button");
+  const amendBtn = buttons[0];
+  const feeBtn = buttons[1];
+  const cancelBtn = buttons[2];
 
   const stopCollapseSelectors = "button, input, select, textarea, .edit-field, .job-expanded";
 
@@ -2647,20 +2797,6 @@ async function loadJobs() {
     }
   });
 
-  [...card.querySelectorAll("input, select, textarea")].forEach((el) => {
-    el.addEventListener("click", (event) => {
-      event.stopPropagation();
-    });
-
-    el.addEventListener("mousedown", (event) => {
-      event.stopPropagation();
-    });
-
-    el.addEventListener("mouseup", (event) => {
-      event.stopPropagation();
-    });
-  });
-
   if (!amendBtn) return;
 
   let editMode = false;
@@ -2670,7 +2806,6 @@ async function loadJobs() {
 
     const groupId = card.dataset.jobGroup;
     const booking = groupedBookings.find((b) => b.groupId === groupId);
-
     if (!booking) return;
 
     const primary = booking.primary;
@@ -2682,7 +2817,6 @@ async function loadJobs() {
       card.querySelectorAll(".view-field").forEach((el) => {
         const field = el.dataset.field;
         const value = el.textContent;
-
         let input;
 
         if (field === "petsRequired") {
@@ -2706,7 +2840,6 @@ async function loadJobs() {
 
           if (field === "scheduledDate") {
             input.type = "date";
-
             const parts = String(value || "").split("/");
             if (parts.length === 3) {
               const [day, month, year] = parts;
@@ -2729,7 +2862,6 @@ async function loadJobs() {
 
         input.className = "edit-field";
         input.dataset.field = field;
-
         input.addEventListener("click", (event) => event.stopPropagation());
         input.addEventListener("mousedown", (event) => event.stopPropagation());
         input.addEventListener("mouseup", (event) => event.stopPropagation());
@@ -2762,21 +2894,32 @@ async function loadJobs() {
     });
 
     const operational = isOperationalChange(primary, updated);
+    const lifecycle = getSafeLifecycle(primary.lifecycle);
+
+    lifecycle.push(
+      buildLifecycleEntry(
+        "amended",
+        operational ? "Operational admin amendment" : "Non-operational admin amendment",
+        normaliseEmail(auth.currentUser?.email)
+      )
+    );
 
     const updates = {
       ...updated,
-      updatedAt: serverTimestamp()
+      lifecycle,
+      updatedAt: serverTimestamp(),
+      lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
     };
 
-    if (operational && primary.acceptedByDriverId) {
-      updates.acceptedByDriverId = "";
-      updates.status = "pending";
-      updates.feeCharged = false;
-
-      console.log("Dethroning driver for booking", primary.groupId);
-    }
-
     try {
+      if (operational && primary.acceptedByDriverId) {
+        await dethroneBookingIfOccupied(
+          booking,
+          "Booking operational details changed by admin.",
+          "pending"
+        );
+      }
+
       for (const part of booking.parts) {
         await updateDoc(doc(db, "jobs", part.id), updates);
       }
@@ -2788,6 +2931,114 @@ async function loadJobs() {
 
     editMode = false;
   });
+
+  if (feeBtn) {
+    feeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+
+      const groupId = card.dataset.jobGroup;
+      const booking = groupedBookings.find((b) => b.groupId === groupId);
+      if (!booking) return;
+
+      const primary = booking.primary;
+
+      if (primary.acceptedByDriverId) {
+        window.alert("Fee override can only be changed while the booking is still on the wall.");
+        return;
+      }
+
+      const currentAmount = Number(primary.effectiveFee || 0);
+      const raw = window.prompt(
+        "Enter override fee per vehicle. Use 0 to waive. Leave blank to cancel.",
+        currentAmount ? String(currentAmount) : ""
+      );
+
+      if (raw === null) return;
+
+      const amount = Number(raw);
+      if (!Number.isFinite(amount) || amount < 0) {
+        window.alert("Enter a valid fee amount of 0 or more.");
+        return;
+      }
+
+      const lifecycle = getSafeLifecycle(primary.lifecycle);
+      lifecycle.push(
+        buildLifecycleEntry(
+          "fee_override",
+          amount === 0
+            ? "Fee waived by admin"
+            : `Fee overridden by admin to £${amount.toFixed(2)} per vehicle`,
+          normaliseEmail(auth.currentUser?.email)
+        )
+      );
+
+      const updates = {
+        feeOverrideApplied: true,
+        effectiveFee: Number(amount.toFixed(2)),
+        lifecycle,
+        updatedAt: serverTimestamp(),
+        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+      };
+
+      try {
+        for (const part of booking.parts) {
+          await updateDoc(doc(db, "jobs", part.id), updates);
+        }
+
+        await loadJobs();
+      } catch (err) {
+        console.error("Failed to override fee", err);
+      }
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+
+      const groupId = card.dataset.jobGroup;
+      const booking = groupedBookings.find((b) => b.groupId === groupId);
+      if (!booking) return;
+
+      const primary = booking.primary;
+      const confirmed = window.confirm(`Cancel booking ${primary.groupId}?`);
+      if (!confirmed) return;
+
+      try {
+        if (primary.acceptedByDriverId) {
+          await dethroneBookingIfOccupied(
+            booking,
+            "Booking cancelled by admin.",
+            "pending"
+          );
+        }
+
+        for (const part of booking.parts) {
+          const partLifecycle = getSafeLifecycle(part.lifecycle);
+          partLifecycle.push(
+            buildLifecycleEntry(
+              "cancelled",
+              "Booking cancelled by admin",
+              normaliseEmail(auth.currentUser?.email)
+            )
+          );
+
+          await updateDoc(doc(db, "jobs", part.id), {
+            status: "cancelled",
+            cancelledAt: serverTimestamp(),
+            cancelledBy: normaliseEmail(auth.currentUser?.email),
+            lifecycle: partLifecycle,
+            updatedAt: serverTimestamp(),
+            lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+          });
+        }
+
+        await loadJobs();
+      } catch (err) {
+        console.error("Failed to cancel booking", err);
+      }
+    });
+  }
 });
   }
     
