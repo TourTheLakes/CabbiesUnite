@@ -2624,12 +2624,20 @@ async function loadJobs() {
   `;
 
   [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
-    card.addEventListener("click", (event) => {
-      const clickedButton = event.target.closest("button");
-      if (clickedButton) return;
-      card.classList.toggle("expanded");
-    });
+  card.addEventListener("click", (event) => {
+    if (
+      event.target.closest("button") ||
+      event.target.closest("input") ||
+      event.target.closest("select") ||
+      event.target.closest("textarea") ||
+      event.target.closest(".edit-field")
+    ) {
+      return;
+    }
+
+    card.classList.toggle("expanded");
   });
+});
 
     [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
   const amendBtn = card.querySelector(".job-actions button");
