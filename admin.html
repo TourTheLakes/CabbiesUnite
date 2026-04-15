@@ -2788,6 +2788,12 @@ async function loadJobs() {
       <div>HC: £${Number(primary.hcPrice || 0).toFixed(2)}</div>
       <div>PH: £${Number(primary.phPrice || 0).toFixed(2)}</div>
       <div>Total: £${Number(primary.totalPrice || 0).toFixed(2)}</div>
+      <div>Platform fee: £${Number(
+  primary.feeOverrideApplied
+    ? (primary.effectiveFee || 0)
+    : calculateDriverFeeFromJobValue(primary.totalPrice, buildAdminFeeOverrideState(primary))
+).toFixed(2)}</div>
+<div>Fee mode: ${primary.feeOverrideApplied ? "Override" : "System"}</div>
     </div>
 
     <div class="job-section">
