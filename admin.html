@@ -691,12 +691,17 @@
 }
 
 .job-section {
-  padding: 10px 0;
+  background: #101010;
+  border: 1px solid var(--line);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
 }
 
 .job-section strong {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
+  color: var(--text);
 }
 
 .job-actions {
@@ -722,10 +727,6 @@
 .job-row {
   padding: 6px 0;
   line-height: 1.4;
-}
-
-.job-row + .job-row {
-  border-top: 1px solid rgba(255,255,255,0.04);
 }
 
 .job-expanded {
