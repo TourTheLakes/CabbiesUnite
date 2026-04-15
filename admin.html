@@ -2974,6 +2974,11 @@ async function loadJobs() {
       updated[field] = value;
     });
 
+    console.log("PRIMARY luggageSize:", primary.luggageSize);
+    console.log("UPDATED luggageSize:", updated.luggageSize);
+    console.log("PRIMARY luggageCount:", primary.luggageCount);
+    console.log("UPDATED luggageCount:", updated.luggageCount);
+
     const changedFields = getChangedFields(primary, updated);
 
     if (!changedFields.length) {
