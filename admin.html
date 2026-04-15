@@ -2672,188 +2672,186 @@ const feeLabel = primary.feeOverrideApplied
   : `System £${feeAmount} (${primary.feeCharged ? "Charged" : "Pending"})`;
 
           return `
-            <div class="job-card" data-job-group="${escapeHtml(groupId)}">
-              <div class="job-header job-toggle">
-                <div class="job-title">
-                  <strong>Booking ${escapeHtml(groupId)}</strong>
-                  <span>${escapeHtml(groupStatus)}</span>
-                </div>
-
-                <div class="pill-row">
-                  <span class="pill">${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}</span>
-                  <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
-                  <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div class="job-toggle">
-  <div class="job-row">
-    <span>${escapeHtml(primary.pickupAddress || "")}</span>
-  </div>
-
-  <div class="job-row">
-    <span>${escapeHtml(primary.dropoffAddress || "")}</span>
-  </div>
-
-  <div class="job-row">
-    <span>${Number(primary.passengerCount || 0)} passengers</span>
-    <span>${escapeHtml(primary.luggageSize || "none")} (${Number(primary.luggageCount || 0)})</span>
-    <span>${primary.petsRequired ? "Pets" : "No pets"}</span>
-  </div>
-
-  <div class="job-row">
-    <span>HC £${Number(primary.hcPrice || 0).toFixed(2)}</span>
-    <span>PH £${Number(primary.phPrice || 0).toFixed(2)}</span>
-    <span>${escapeHtml(feeLabel)}</span>
-  </div>
-
-  <div class="job-row">
-    <span>Driver: ${escapeHtml(primary.acceptedByDriverId || "On wall")}</span>
-    <span>Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</span>
-  </div>
-</div>
-
-<div class="job-expanded">
-  <div class="job-section-grid">
-    <div class="job-section">
-      <strong>Customer</strong>
-
-      <div>
-        Name:
-        <span class="view-field" data-field="customerName">${escapeHtml(primary.customerName || "-")}</span>
+  <div class="job-card" data-job-group="${escapeHtml(groupId)}">
+    <div class="job-header job-toggle">
+      <div class="job-title">
+        <strong>Booking ${escapeHtml(groupId)}</strong>
+        <span>${escapeHtml(groupStatus)}</span>
       </div>
 
-      <div>Original: ${escapeHtml(primary.customerPhoneOriginal || "-")}</div>
-
-      <div>
-        Preferred:
-        <span class="view-field" data-field="customerPhonePreferred">${escapeHtml(primary.customerPhonePreferred || "-")}</span>
-      </div>
-
-      <div>Use preferred: ${primary.usePreferredContact ? "Yes" : "No"}</div>
-
-      <div>
-        Notes:
-        <span class="view-field" data-field="notes">${escapeHtml(primary.notes || "-")}</span>
+      <div class="pill-row">
+        <span class="pill">${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}</span>
+        <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
+        <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
       </div>
     </div>
 
-    <div class="job-section">
-      <strong>Journey</strong>
-
-      <div>
-        Pickup:
-        <span class="view-field" data-field="pickupAddress">${escapeHtml(primary.pickupAddress || "-")}</span>
+    <div class="job-toggle">
+      <div class="job-row">
+        <span>${escapeHtml(primary.pickupAddress || "")}</span>
       </div>
 
-      <div>
-        Dropoff:
-        <span class="view-field" data-field="dropoffAddress">${escapeHtml(primary.dropoffAddress || "-")}</span>
+      <div class="job-row">
+        <span>${escapeHtml(primary.dropoffAddress || "")}</span>
       </div>
 
-      <div>Distance: ${Number(primary.distanceMiles || 0).toFixed(2)} miles</div>
-
-      <div>
-        Date:
-        <span class="view-field" data-field="scheduledDate">${escapeHtml(primary.scheduledDate || "-")}</span>
+      <div class="job-row">
+        <span>${Number(primary.passengerCount || 0)} passengers</span>
+        <span>${escapeHtml(primary.luggageSize || "none")} (${Number(primary.luggageCount || 0)})</span>
+        <span>${primary.petsRequired ? "Pets" : "No pets"}</span>
       </div>
 
-      <div>
-        Time:
-        <span class="view-field" data-field="scheduledTime">${escapeHtml(primary.scheduledTime || "-")}</span>
+      <div class="job-row">
+        <span>HC £${Number(primary.hcPrice || 0).toFixed(2)}</span>
+        <span>PH £${Number(primary.phPrice || 0).toFixed(2)}</span>
+        <span>${escapeHtml(feeLabel)}</span>
       </div>
 
-      <div>
-        Passengers:
-        <span class="view-field" data-field="passengerCount">${Number(primary.passengerCount || 0)}</span>
+      <div class="job-row">
+        <span>Driver: ${escapeHtml(primary.acceptedByDriverId || "On wall")}</span>
+        <span>Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</span>
       </div>
-
-      <div>
-        Pets:
-        <span class="view-field" data-field="petsRequired">${primary.petsRequired ? "yes" : "no"}</span>
-      </div>
-
-      <div>
-        Luggage Size:
-        <span class="view-field" data-field="luggageSize">${escapeHtml(primary.luggageSize || "none")}</span>
-      </div>
-
-      <div>
-        Luggage Count:
-        <span class="view-field" data-field="luggageCount">${Number(primary.luggageCount || 0)}</span>
-      </div>
-
-      <div>Source: ${escapeHtml(primary.source || "-")}</div>
     </div>
 
-    <div class="job-section">
-      <strong>Pricing</strong>
-      <div>Live quoted: £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</div>
-      <div>Quoted initial: £${Number(primary.quotedPriceInitial || 0).toFixed(2)}</div>
-      <div>Quoted current: £${Number(primary.quotedPriceCurrent || 0).toFixed(2)}</div>
-      <div>HC: £${Number(primary.hcPrice || 0).toFixed(2)}</div>
-      <div>PH: £${Number(primary.phPrice || 0).toFixed(2)}</div>
-      <div>Total: £${Number(primary.totalPrice || 0).toFixed(2)}</div>
-      <div>Platform fee: £${Number(
-  primary.feeOverrideApplied
-    ? (primary.effectiveFee || 0)
-    : calculateDriverFeeFromJobValue(primary.totalPrice, buildAdminFeeOverrideState(primary))
-).toFixed(2)}</div>
-<div>Fee mode: ${primary.feeOverrideApplied ? "Override" : "System"}</div>
-    </div>
+    <div class="job-expanded">
+      <div class="job-section-grid">
+        <div class="job-section">
+          <strong>Customer</strong>
 
-    <div class="job-section">
-      <strong>Allocation</strong>
-      <div>Status: ${escapeHtml(primary.status || "-")}</div>
-      <div>Compound: ${primary.compound ? "Yes" : "No"}</div>
-      <div>Required seats: ${Number(primary.requiredSeats || 0)}</div>
-      <div>Short job: ${primary.isShortJob ? "Yes" : "No"}</div>
-      <div>PH hold until: ${primary.phOnlyUntil ? escapeHtml(String(primary.phOnlyUntil)) : "-"}</div>
-    </div>
-  </div>
-
-  <div class="job-section">
-    <strong>Compound Parts</strong>
-    <div class="job-parts">
-      ${parts.map((part, index) => `
-        <div class="job-part">
-          <div class="job-row">
-            <span><strong>Part ${index + 1} / ${total}</strong></span>
-            <span>${escapeHtml(part.status || "pending")}</span>
+          <div>
+            Name:
+            <span class="view-field" data-field="customerName">${escapeHtml(primary.customerName || "-")}</span>
           </div>
-          <div class="job-row">
-            <span>${Number(part.passengerCount || 0)} passengers</span>
-            <span>${escapeHtml(part.luggageSize || "none")} (${Number(part.luggageCount || 0)})</span>
+
+          <div>Original: ${escapeHtml(primary.customerPhoneOriginal || "-")}</div>
+
+          <div>
+            Preferred:
+            <span class="view-field" data-field="customerPhonePreferred">${escapeHtml(primary.customerPhonePreferred || "-")}</span>
           </div>
-          <div class="job-row">
-            <span>Required seats: ${Number(part.requiredSeats || 0)}</span>
-            <span>Vehicle price: £${Number(part.vehiclePrice || 0).toFixed(2)}</span>
-          </div>
-          <div class="job-row">
-            <span>Accepted by: ${escapeHtml(part.acceptedByDriverId || "On wall")}</span>
+
+          <div>Use preferred: ${primary.usePreferredContact ? "Yes" : "No"}</div>
+
+          <div>
+            Notes:
+            <span class="view-field" data-field="notes">${escapeHtml(primary.notes || "-")}</span>
           </div>
         </div>
-      `).join("")}
-    </div>
-  </div>
 
-  <div class="job-section">
-    <strong>Lifecycle</strong>
-    <div class="job-life">
-      ${buildLifecycleHtml(primary)}
-    </div>
-  </div>
+        <div class="job-section">
+          <strong>Journey</strong>
 
-  <div class="job-actions">
-  <button class="btn secondary small" type="button" data-job-action="amend">Amend Booking</button>
-  <button class="btn secondary small" type="button" data-job-action="fee-override">Fee Override</button>
-  <button class="btn secondary small" type="button" data-job-action="cancel">Cancel Booking</button>
-</div>
-</div>
-`;
-        }).join("")}
+          <div>
+            Pickup:
+            <span class="view-field" data-field="pickupAddress">${escapeHtml(primary.pickupAddress || "-")}</span>
+          </div>
+
+          <div>
+            Dropoff:
+            <span class="view-field" data-field="dropoffAddress">${escapeHtml(primary.dropoffAddress || "-")}</span>
+          </div>
+
+          <div>Distance: ${Number(primary.distanceMiles || 0).toFixed(2)} miles</div>
+
+          <div>
+            Date:
+            <span class="view-field" data-field="scheduledDate">${escapeHtml(primary.scheduledDate || "-")}</span>
+          </div>
+
+          <div>
+            Time:
+            <span class="view-field" data-field="scheduledTime">${escapeHtml(primary.scheduledTime || "-")}</span>
+          </div>
+
+          <div>
+            Passengers:
+            <span class="view-field" data-field="passengerCount">${Number(primary.passengerCount || 0)}</span>
+          </div>
+
+          <div>
+            Pets:
+            <span class="view-field" data-field="petsRequired">${primary.petsRequired ? "yes" : "no"}</span>
+          </div>
+
+          <div>
+            Luggage Size:
+            <span class="view-field" data-field="luggageSize">${escapeHtml(primary.luggageSize || "none")}</span>
+          </div>
+
+          <div>
+            Luggage Count:
+            <span class="view-field" data-field="luggageCount">${Number(primary.luggageCount || 0)}</span>
+          </div>
+
+          <div>Source: ${escapeHtml(primary.source || "-")}</div>
+        </div>
+
+        <div class="job-section">
+          <strong>Pricing</strong>
+          <div>Live quoted: £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</div>
+          <div>Quoted initial: £${Number(primary.quotedPriceInitial || 0).toFixed(2)}</div>
+          <div>Quoted current: £${Number(primary.quotedPriceCurrent || 0).toFixed(2)}</div>
+          <div>HC: £${Number(primary.hcPrice || 0).toFixed(2)}</div>
+          <div>PH: £${Number(primary.phPrice || 0).toFixed(2)}</div>
+          <div>Total: £${Number(primary.totalPrice || 0).toFixed(2)}</div>
+          <div>Platform fee: £${Number(
+            primary.feeOverrideApplied
+              ? (primary.effectiveFee || 0)
+              : calculateDriverFeeFromJobValue(primary.totalPrice, buildAdminFeeOverrideState(primary))
+          ).toFixed(2)}</div>
+          <div>Fee mode: ${primary.feeOverrideApplied ? "Override" : "System"}</div>
+        </div>
+
+        <div class="job-section">
+          <strong>Allocation</strong>
+          <div>Status: ${escapeHtml(primary.status || "-")}</div>
+          <div>Compound: ${primary.compound ? "Yes" : "No"}</div>
+          <div>Required seats: ${Number(primary.requiredSeats || 0)}</div>
+          <div>Short job: ${primary.isShortJob ? "Yes" : "No"}</div>
+          <div>PH hold until: ${primary.phOnlyUntil ? escapeHtml(String(primary.phOnlyUntil)) : "-"}</div>
+        </div>
       </div>
-    `;
+
+      <div class="job-section">
+        <strong>Compound Parts</strong>
+        <div class="job-parts">
+          ${parts.map((part, index) => `
+            <div class="job-part">
+              <div class="job-row">
+                <span><strong>Part ${index + 1} / ${total}</strong></span>
+                <span>${escapeHtml(part.status || "pending")}</span>
+              </div>
+              <div class="job-row">
+                <span>${Number(part.passengerCount || 0)} passengers</span>
+                <span>${escapeHtml(part.luggageSize || "none")} (${Number(part.luggageCount || 0)})</span>
+              </div>
+              <div class="job-row">
+                <span>Required seats: ${Number(part.requiredSeats || 0)}</span>
+                <span>Vehicle price: £${Number(part.vehiclePrice || 0).toFixed(2)}</span>
+              </div>
+              <div class="job-row">
+                <span>Accepted by: ${escapeHtml(part.acceptedByDriverId || "On wall")}</span>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="job-section">
+        <strong>Lifecycle</strong>
+        <div class="job-life">
+          ${buildLifecycleHtml(primary)}
+        </div>
+      </div>
+
+      <div class="job-actions">
+        <button class="btn secondary small" type="button" data-job-action="amend">Amend Booking</button>
+        <button class="btn secondary small" type="button" data-job-action="fee-override">Fee Override</button>
+        <button class="btn secondary small" type="button" data-job-action="cancel">Cancel Booking</button>
+      </div>
+    </div>
+  </div>
+`;
   }
 
   jobsList.innerHTML = `
