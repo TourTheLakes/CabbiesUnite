@@ -282,6 +282,18 @@
       min-height: 44px;
     }
 
+    input[type="date"] {
+     background: #0f0f0f;
+     color: var(--text);
+     border: 1px solid var(--line);
+   }
+
+   input[type="date"]::-webkit-calendar-picker-indicator {
+     filter: invert(1);
+     opacity: 0.75;
+     cursor: pointer;
+   }
+
     .field textarea {
       min-height: 90px;
       resize: vertical;
@@ -547,6 +559,87 @@
      color: var(--muted);
    }
 
+    .jobs-section-block {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.jobs-section-block h3 {
+  font-size: 1rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.job-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.job-card.expanded {
+  border-color: var(--text);
+}
+
+.job-expanded {
+  display: none;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-top: 4px;
+}
+
+.job-card.expanded .job-expanded {
+  display: grid;
+}
+
+.job-section-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.job-section {
+  background: #101010;
+  border: 1px solid var(--line);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.job-section strong {
+  color: var(--text);
+}
+
+.job-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.job-life {
+  display: grid;
+  gap: 8px;
+}
+
+.job-life-entry {
+  border: 1px solid var(--line);
+  background: #101010;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+@media (max-width: 860px) {
+  .job-section-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
     @media (max-width: 1180px) {
       .grid.two {
         grid-template-columns: 1fr;
@@ -742,19 +835,20 @@
       </section>
 
       <section id="section-jobs" class="hidden">
-     <div class="page-header">
-       <h2>Jobs</h2>
-       <p>All bookings grouped by job. Compound bookings are shown as a single unit.</p>
-     </div>
+  <div class="page-header">
+    <h2>Jobs</h2>
+    <p>All bookings grouped by job. Compound bookings are shown as a single unit.</p>
+  </div>
 
-     <div class="panel">
-       <div class="toolbar">
-         <button id="refreshJobsBtn" class="btn secondary small" type="button">Refresh</button>
-       </div>
+  <div class="panel">
+    <div class="toolbar">
+      <input id="jobSearchPhone" type="search" placeholder="Search by phone number" />
+      <button id="refreshJobsBtn" class="btn secondary small" type="button">Refresh</button>
+    </div>
 
-       <div id="jobsList" class="drivers-list"></div>
-     </div>
-   </section>
+    <div id="jobsList"></div>
+  </div>
+</section>
       
       <section id="section-manual" class="hidden">
   <div class="page-header">
@@ -799,7 +893,7 @@
 
       <div class="field">
         <label for="manualScheduledDate">Date</label>
-        <input id="manualScheduledDate" name="scheduledDate" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" required />
+        <input id="manualScheduledDate" name="scheduledDate" type="date" required />
       </div>
 
       <div class="field">
@@ -809,7 +903,7 @@
 
       <div class="field">
         <label for="manualPassengerCount">Passengers</label>
-        <input id="manualPassengerCount" name="passengerCount" type="number" min="1" max="8" required />
+        <input id="manualPassengerCount" name="passengerCount" type="number" min="1" required />
       </div>
 
       <div class="field">
@@ -983,6 +1077,7 @@ const firebaseConfig = {
     const quoteTotalPrice = document.getElementById("quoteTotalPrice");
     const quoteVehicleBreakdown = document.getElementById("quoteVehicleBreakdown");
     const quoteWarning = document.getElementById("quoteWarning");
+    const jobSearchPhone = document.getElementById("jobSearchPhone");
 
     const navButtons = [...document.querySelectorAll(".nav-btn")];
     const sections = {
@@ -1726,7 +1821,18 @@ function calculatePHPrice(miles, passengers, dateTimeString) {
       };
     }
 
-    function getManualBookingFormData() {
+    function formatIsoDateToUk(value) {
+  const iso = String(value || "").trim();
+  if (!iso) return "";
+
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+
+  const [year, month, day] = parts;
+  return `${day}/${month}/${year}`;
+}
+
+function getManualBookingFormData() {
   const formData = new FormData(manualBookingForm);
 
   return {
@@ -1736,7 +1842,7 @@ function calculatePHPrice(miles, passengers, dateTimeString) {
     preferredPhone: String(formData.get("preferredPhone") || "").trim(),
     pickupAddress: String(formData.get("pickupAddress") || "").trim(),
     dropoffAddress: String(formData.get("dropoffAddress") || "").trim(),
-    scheduledDate: String(formData.get("scheduledDate") || "").trim(),
+    scheduledDate: formatIsoDateToUk(formData.get("scheduledDate")),
     scheduledTime: String(formData.get("scheduledTime") || "").trim(),
     passengerCount: Number(formData.get("passengerCount") || 0),
     petsRequired: String(formData.get("petsRequired") || "no").trim(),
@@ -2153,6 +2259,7 @@ resetManualBookingBtn.addEventListener("click", () => {
   document.getElementById("manualPetsRequired").value = "no";
   document.getElementById("manualLuggageSize").value = "none";
   document.getElementById("manualLuggageCount").value = "0";
+  document.getElementById("manualScheduledDate").value = "";
   setManualBookingMessage("");
   renderManualQuote(null);
 });
@@ -2177,6 +2284,8 @@ resetManualBookingBtn.addEventListener("click", () => {
 driverSearch.addEventListener("input", () => renderDrivers(cachedDrivers));
 refreshDriversBtn.addEventListener("click", loadDrivers);
 driversList.addEventListener("click", handleDriverListClick);
+
+jobSearchPhone.addEventListener("input", renderJobs);
 
     bindNav();
 
@@ -2230,73 +2339,232 @@ async function loadJobs() {
     return;
   }
 
-  // group by groupId
+  const phoneTerm = String(jobSearchPhone?.value || "").trim();
+
   const groups = {};
 
-  cachedJobs.forEach(job => {
+  cachedJobs.forEach((job) => {
     const key = job.groupId || job.id;
-
     if (!groups[key]) groups[key] = [];
     groups[key].push(job);
   });
 
-  const html = Object.entries(groups).map(([groupId, parts]) => {
-    const total = parts.length;
-    const acceptedCount = parts.filter(p => p.status === "accepted").length;
+  const groupedBookings = Object.entries(groups).map(([groupId, parts]) => {
+    parts.sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
+    const primary = parts[0];
+    return { groupId, parts, primary };
+  });
 
-    let groupStatus = "Pending";
-    if (acceptedCount > 0 && acceptedCount < total) groupStatus = "Partially Accepted";
-    if (acceptedCount === total) groupStatus = "Confirmed";
+  const filteredBookings = groupedBookings.filter(({ primary }) => {
+    if (!phoneTerm) return true;
+    return (
+      String(primary.customerPhoneOriginal || "").includes(phoneTerm) ||
+      String(primary.customerPhonePreferred || "").includes(phoneTerm)
+    );
+  });
+
+  const activeBookings = [];
+  const completedBookings = [];
+  const cancelledBookings = [];
+
+  filteredBookings.forEach((booking) => {
+    const status = String(booking.primary.status || "").toLowerCase();
+
+    if (status === "cancelled") {
+      cancelledBookings.push(booking);
+      return;
+    }
+
+    if (status === "fulfilled" || status === "completed") {
+      completedBookings.push(booking);
+      return;
+    }
+
+    activeBookings.push(booking);
+  });
+
+  function buildLifecycleHtml(primary) {
+    const lifecycle = Array.isArray(primary.lifecycle) ? primary.lifecycle : [];
+
+    if (!lifecycle.length) {
+      return `<div class="job-life-entry"><div>No lifecycle entries yet.</div></div>`;
+    }
+
+    return lifecycle.map((entry) => `
+      <div class="job-life-entry">
+        <div><strong>${escapeHtml(entry.event || "Event")}</strong></div>
+        <div>${escapeHtml(entry.actor || "-")}</div>
+        <div>${escapeHtml(entry.at || "-")}</div>
+      </div>
+    `).join("");
+  }
+
+  function buildSection(title, bookings) {
+    if (!bookings.length) {
+      return `
+        <div class="jobs-section-block">
+          <h3>${title}</h3>
+          <div class="empty-state">No bookings in this section.</div>
+        </div>
+      `;
+    }
 
     return `
-      <div class="job-group">
-        <div class="job-header">
-          <div class="job-title">
-            <strong>Booking ${groupId}</strong>
-            <span>${groupStatus}</span>
-          </div>
+      <div class="jobs-section-block">
+        <h3>${title}</h3>
+        ${bookings.map(({ groupId, parts, primary }) => {
+          const total = parts.length;
+          const acceptedCount = parts.filter((p) => String(p.status || "").toLowerCase() === "accepted").length;
 
-          <div class="pill-row">
-            <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
-          </div>
-        </div>
+          let groupStatus = "Pending";
+          if (acceptedCount > 0 && acceptedCount < total) groupStatus = "Partially Accepted";
+          if (acceptedCount === total && total > 0) groupStatus = "Confirmed";
 
-        <div class="job-parts">
-          ${parts.map((job, index) => {
-            const driver = job.acceptedByDriverId || "—";
-            const feeState = job.feeCharged ? "Charged" : "Pending";
+          if (String(primary.status || "").toLowerCase() === "cancelled") groupStatus = "Cancelled";
+          if (["fulfilled", "completed"].includes(String(primary.status || "").toLowerCase())) groupStatus = "Completed";
 
-            return `
-              <div class="job-part">
-                <div class="job-row">
-                  <span><strong>Part ${index + 1} / ${total}</strong></span>
-                  <span>${job.status || "pending"}</span>
+          const feeLabel = primary.feeOverrideApplied
+            ? `Waived / Overridden (£${Number(primary.effectiveFee || 0).toFixed(2)})`
+            : `System (${primary.feeCharged ? "Charged" : "Pending"})`;
+
+          return `
+            <div class="job-card" data-job-group="${escapeHtml(groupId)}">
+              <div class="job-header">
+                <div class="job-title">
+                  <strong>Booking ${escapeHtml(groupId)}</strong>
+                  <span>${escapeHtml(groupStatus)}</span>
                 </div>
 
-                <div class="job-row">
-                  <span>${job.passengerCount} passengers</span>
-                  <span>${job.luggageSize || "none"} (${job.luggageCount || 0})</span>
-                </div>
-
-                <div class="job-row">
-                  <span>Driver: ${driver}</span>
-                  <span>Fee: ${feeState}</span>
-                </div>
-
-                <div class="job-row">
-                  <span>${job.pickupAddress || ""}</span>
-                  <span>→</span>
-                  <span>${job.dropoffAddress || ""}</span>
+                <div class="pill-row">
+                  <span class="pill">${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}</span>
+                  <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
+                  <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
                 </div>
               </div>
-            `;
-          }).join("")}
-        </div>
+
+              <div class="job-row">
+                <span>${escapeHtml(primary.pickupAddress || "")}</span>
+              </div>
+
+              <div class="job-row">
+                <span>${escapeHtml(primary.dropoffAddress || "")}</span>
+              </div>
+
+              <div class="job-row">
+                <span>${Number(primary.passengerCount || 0)} passengers</span>
+                <span>${escapeHtml(primary.luggageSize || "none")} (${Number(primary.luggageCount || 0)})</span>
+                <span>${primary.petsRequired ? "Pets" : "No pets"}</span>
+              </div>
+
+              <div class="job-row">
+                <span>HC £${Number(primary.hcPrice || 0).toFixed(2)}</span>
+                <span>PH £${Number(primary.phPrice || 0).toFixed(2)}</span>
+                <span>${escapeHtml(feeLabel)}</span>
+              </div>
+
+              <div class="job-row">
+                <span>Driver: ${escapeHtml(primary.acceptedByDriverId || "On wall")}</span>
+                <span>Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</span>
+              </div>
+
+              <div class="job-expanded">
+                <div class="job-section-grid">
+                  <div class="job-section">
+                    <strong>Customer</strong>
+                    <div>Name: ${escapeHtml(primary.customerName || "-")}</div>
+                    <div>Original: ${escapeHtml(primary.customerPhoneOriginal || "-")}</div>
+                    <div>Preferred: ${escapeHtml(primary.customerPhonePreferred || "-")}</div>
+                    <div>Use preferred: ${primary.usePreferredContact ? "Yes" : "No"}</div>
+                    <div>Notes: ${escapeHtml(primary.notes || "-")}</div>
+                  </div>
+
+                  <div class="job-section">
+                    <strong>Journey</strong>
+                    <div>Pickup: ${escapeHtml(primary.pickupAddress || "-")}</div>
+                    <div>Dropoff: ${escapeHtml(primary.dropoffAddress || "-")}</div>
+                    <div>Distance: ${Number(primary.distanceMiles || 0).toFixed(2)} miles</div>
+                    <div>Scheduled: ${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}</div>
+                    <div>Source: ${escapeHtml(primary.source || "-")}</div>
+                  </div>
+
+                  <div class="job-section">
+                    <strong>Pricing</strong>
+                    <div>Live quoted: £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</div>
+                    <div>Quoted initial: £${Number(primary.quotedPriceInitial || 0).toFixed(2)}</div>
+                    <div>Quoted current: £${Number(primary.quotedPriceCurrent || 0).toFixed(2)}</div>
+                    <div>HC: £${Number(primary.hcPrice || 0).toFixed(2)}</div>
+                    <div>PH: £${Number(primary.phPrice || 0).toFixed(2)}</div>
+                    <div>Total: £${Number(primary.totalPrice || 0).toFixed(2)}</div>
+                  </div>
+
+                  <div class="job-section">
+                    <strong>Allocation</strong>
+                    <div>Status: ${escapeHtml(primary.status || "-")}</div>
+                    <div>Compound: ${primary.compound ? "Yes" : "No"}</div>
+                    <div>Required seats: ${Number(primary.requiredSeats || 0)}</div>
+                    <div>Short job: ${primary.isShortJob ? "Yes" : "No"}</div>
+                    <div>PH hold until: ${primary.phOnlyUntil ? escapeHtml(String(primary.phOnlyUntil)) : "-"}</div>
+                  </div>
+                </div>
+
+                <div class="job-section">
+                  <strong>Compound Parts</strong>
+                  <div class="job-parts">
+                    ${parts.map((part, index) => `
+                      <div class="job-part">
+                        <div class="job-row">
+                          <span><strong>Part ${index + 1} / ${total}</strong></span>
+                          <span>${escapeHtml(part.status || "pending")}</span>
+                        </div>
+                        <div class="job-row">
+                          <span>${Number(part.passengerCount || 0)} passengers</span>
+                          <span>${escapeHtml(part.luggageSize || "none")} (${Number(part.luggageCount || 0)})</span>
+                        </div>
+                        <div class="job-row">
+                          <span>Required seats: ${Number(part.requiredSeats || 0)}</span>
+                          <span>Vehicle price: £${Number(part.vehiclePrice || 0).toFixed(2)}</span>
+                        </div>
+                        <div class="job-row">
+                          <span>Accepted by: ${escapeHtml(part.acceptedByDriverId || "On wall")}</span>
+                        </div>
+                      </div>
+                    `).join("")}
+                  </div>
+                </div>
+
+                <div class="job-section">
+                  <strong>Lifecycle</strong>
+                  <div class="job-life">
+                    ${buildLifecycleHtml(primary)}
+                  </div>
+                </div>
+
+                <div class="job-actions">
+                  <button class="btn secondary small" type="button">Amend Booking</button>
+                  <button class="btn secondary small" type="button">Fee Override</button>
+                  <button class="btn secondary small" type="button">Cancel Booking</button>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("")}
       </div>
     `;
-  }).join("");
+  }
 
-  jobsList.innerHTML = html;
+  jobsList.innerHTML = `
+    ${buildSection("Active Jobs", activeBookings)}
+    ${buildSection("Completed Jobs", completedBookings)}
+    ${buildSection("Cancelled Jobs", cancelledBookings)}
+  `;
+
+  [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
+    card.addEventListener("click", (event) => {
+      const clickedButton = event.target.closest("button");
+      if (clickedButton) return;
+      card.classList.toggle("expanded");
+    });
+  });
 }
 
 document.getElementById("refreshJobsBtn").addEventListener("click", loadJobs);
