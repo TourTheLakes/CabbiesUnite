@@ -2243,6 +2243,7 @@ function getManualBookingFormData() {
   notes: data.notes,
   acceptedByDriverId: "",
   feeCharged: false,
+  effectiveFee: calculateDriverFeeFromJobValue(quote.totalPrice),
   status: "pending",
   quotedPriceInitial: quote.quotedPriceInitial,
   quotedPriceCurrent: quote.quotedPriceCurrent,
