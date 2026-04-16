@@ -3417,52 +3417,6 @@ for (let i = rebuiltParts.length; i < existingParts.length; i++) {
         return;
       }
     }
-
-    const nextLifecycle = [
-      ...(Array.isArray(primary.lifecycle) ? primary.lifecycle : []),
-      buildLifecycleEntry(
-        "amended",
-        operational ? "Operational admin amendment" : "Non-operational admin amendment",
-        { changes: changedFields }
-      )
-    ];
-
-    const updates = {
-      ...updated,
-      lifecycle: nextLifecycle,
-      updatedAt: serverTimestamp(),
-      lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-    };
-
-    if (operational && primary.acceptedByDriverId) {
-      updates.acceptedByDriverId = "";
-      updates.status = "pending";
-      updates.feeCharged = false;
-    }
-
-    try {
-      for (const part of booking.parts) {
-        const partUpdates = {
-          ...updates,
-          lifecycle: [
-            ...(Array.isArray(part.lifecycle) ? part.lifecycle : []),
-            buildLifecycleEntry(
-              "amended",
-              operational ? "Operational admin amendment" : "Non-operational admin amendment",
-              { changes: changedFields }
-            )
-          ]
-        };
-
-        await updateDoc(doc(db, "jobs", part.id), partUpdates);
-      }
-
-      await loadJobs();
-    } catch (err) {
-      console.error("Failed to save booking changes", err);
-    }
-
-    editMode = false;
   });
 
   if (feeOverrideBtn) {
