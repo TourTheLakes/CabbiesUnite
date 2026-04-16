@@ -3404,6 +3404,21 @@ console.log("REBUILT parts:", JSON.stringify(rebuilt.parts, null, 2));
     }
 
     await batch.commit();
+
+    const verifySnapshot = await getDocs(
+  query(collection(db, "jobs"), where("groupId", "==", primary.groupId))
+);
+
+const verifyParts = verifySnapshot.docs
+  .map((docSnap) => ({
+    id: docSnap.id,
+    ...docSnap.data()
+  }))
+  .sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
+
+console.log("VERIFY parts length after commit:", verifyParts.length);
+console.log("VERIFY parts after commit:", JSON.stringify(verifyParts, null, 2));
+    
     await loadJobs();
     editMode = false;
     return;
