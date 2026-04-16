@@ -1103,7 +1103,8 @@
   orderBy,
   serverTimestamp,
   doc,
-  updateDoc
+  updateDoc,
+  deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -1684,6 +1685,62 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     isShortJob: distanceMiles <= 3,
     phOnlyUntil: distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
     compound: true,
+    parts
+  };
+}
+
+    async function rebuildBookingGroupFromTotals(booking, updated) {
+  const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
+  const distanceMiles = applyDistanceBuffer(rawMiles);
+  const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+
+  const activeFleet = getActiveFleet(cachedDrivers);
+
+  const plan = solveVehiclePlan(
+    updated.passengerCount,
+    updated.luggageSize,
+    updated.luggageCount,
+    activeFleet
+  );
+
+  if (!plan) {
+    throw new Error("No active vehicle combination can fulfil this amended booking.");
+  }
+
+  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
+
+  const parts = plan.vehicles.map((vehicle, index) => {
+    const vehiclePrice =
+      distanceMiles <= 3
+        ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
+        : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
+
+    return {
+      partIndex: index + 1,
+      totalParts: plan.vehicles.length,
+      passengerCount: vehicle.passengers,
+      luggageSize: vehicle.luggageSize,
+      luggageCount: vehicle.luggageCount,
+      requiredSeats: vehicle.capacity,
+      vehiclePrice: Number(vehiclePrice.toFixed(2)),
+      effectiveFee: calculateDriverFeeFromJobValue(vehiclePrice)
+    };
+  });
+
+  return {
+    scheduledAt,
+    distanceMiles: Number(distanceMiles.toFixed(2)),
+    hcPrice: Number(hcPrice.toFixed(2)),
+    phPrice: Number(phPrice.toFixed(2)),
+    liveQuotedPrice: Number(liveQuotedPrice.toFixed(2)),
+    quotedPriceInitial: Number(liveQuotedPrice.toFixed(2)),
+    quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
+    totalPrice: Number(parts.reduce((sum, p) => sum + p.vehiclePrice, 0).toFixed(2)),
+    isShortJob: distanceMiles <= 3,
+    phOnlyUntil: distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
+    compound: parts.length > 1,
     parts
   };
 }
@@ -3226,49 +3283,77 @@ function buildSection(title, bookings) {
     const operational = isOperationalChange(primary, updated);
 
     if (operational) {
-      try {
-        if (operational) {
   try {
-    const compound = await expandBookingToCompound(primary, updated);
+    const rebuilt = await rebuildBookingGroupFromTotals(booking, updated);
 
-    if (compound) {
-      // APPLY PART 1 TO EXISTING DOCUMENT
-      const first = compound.parts[0];
+    const groupLifecycleEntry = buildLifecycleEntry(
+      "amended",
+      "Operational admin amendment",
+      { changes: changedFields }
+    );
 
-      Object.assign(updated, {
-        ...compound,
-        ...first,
-        totalParts: compound.parts.length
+    const existingParts = [...booking.parts].sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
+    const rebuiltParts = rebuilt.parts;
+
+    // UPDATE EXISTING PARTS THAT STILL HAVE A MATCH
+    for (let i = 0; i < Math.min(existingParts.length, rebuiltParts.length); i++) {
+      const existing = existingParts[i];
+      const part = rebuiltParts[i];
+
+      await updateDoc(doc(db, "jobs", existing.id), {
+        ...updated,
+        ...rebuilt,
+        ...part,
+        groupId: primary.groupId,
+        lifecycle: [
+          ...(Array.isArray(existing.lifecycle) ? existing.lifecycle : []),
+          groupLifecycleEntry
+        ],
+        acceptedByDriverId: "",
+        status: "pending",
+        feeCharged: false,
+        updatedAt: serverTimestamp(),
+        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
       });
-
-      // CREATE ADDITIONAL PART DOCUMENTS
-      const groupId = primary.groupId;
-
-      for (let i = 1; i < compound.parts.length; i++) {
-        const part = compound.parts[i];
-
-        await addDoc(collection(db, "jobs"), {
-          ...primary,
-          ...updated,
-          ...part,
-          groupId,
-          acceptedByDriverId: "",
-          status: "pending",
-          lifecycle: [
-            ...(primary.lifecycle || []),
-            buildLifecycleEntry(
-              "system",
-              "Created as compound split from amendment",
-              { partIndex: part.partIndex }
-            )
-          ]
-        });
-      }
-
-    } else {
-      const recalculated = await recalculateSinglePartBookingUpdate(primary, updated);
-      Object.assign(updated, recalculated);
     }
+
+    // CREATE NEW PARTS IF THE REBUILT PLAN NEEDS MORE
+    for (let i = existingParts.length; i < rebuiltParts.length; i++) {
+      const part = rebuiltParts[i];
+
+      await addDoc(collection(db, "jobs"), {
+        ...primary,
+        ...updated,
+        ...rebuilt,
+        ...part,
+        groupId: primary.groupId,
+        acceptedByDriverId: "",
+        status: "pending",
+        feeCharged: false,
+        lifecycle: [
+          ...(Array.isArray(primary.lifecycle) ? primary.lifecycle : []),
+          groupLifecycleEntry,
+          buildLifecycleEntry(
+            "system",
+            "Created as compound split from amendment",
+            { partIndex: part.partIndex }
+          )
+        ],
+        createdAt: primary.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: primary.createdBy || normaliseEmail(auth.currentUser?.email),
+        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+      });
+    }
+
+    // DELETE SURPLUS OLD PARTS IF THE REBUILT PLAN NEEDS FEWER
+    for (let i = rebuiltParts.length; i < existingParts.length; i++) {
+      await deleteDoc(doc(db, "jobs", existingParts[i].id));
+    }
+
+    await loadJobs();
+    editMode = false;
+    return;
 
   } catch (err) {
     window.alert(err.message || "Failed to recalculate amended booking.");
