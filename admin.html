@@ -1634,6 +1634,60 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
   };
 }
 
+    async function expandBookingToCompound(primary, updated) {
+  const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
+  const distanceMiles = applyDistanceBuffer(rawMiles);
+  const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+
+  const activeFleet = getActiveFleet(cachedDrivers);
+
+  const plan = solveVehiclePlan(
+    updated.passengerCount,
+    updated.luggageSize,
+    updated.luggageCount,
+    activeFleet
+  );
+
+  if (!plan || plan.vehicles.length <= 1) {
+    return null;
+  }
+
+  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
+
+  const parts = plan.vehicles.map((vehicle, index) => {
+    const vehiclePrice =
+      distanceMiles <= 3
+        ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
+        : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
+
+    return {
+      partIndex: index + 1,
+      totalParts: plan.vehicles.length,
+      passengerCount: vehicle.passengers,
+      luggageSize: vehicle.luggageSize,
+      luggageCount: vehicle.luggageCount,
+      requiredSeats: vehicle.capacity,
+      vehiclePrice: Number(vehiclePrice.toFixed(2))
+    };
+  });
+
+  return {
+    scheduledAt,
+    distanceMiles: Number(distanceMiles.toFixed(2)),
+    hcPrice: Number(hcPrice.toFixed(2)),
+    phPrice: Number(phPrice.toFixed(2)),
+    liveQuotedPrice: Number(liveQuotedPrice.toFixed(2)),
+    quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
+    totalPrice: parts.reduce((sum, p) => sum + p.vehiclePrice, 0),
+    isShortJob: distanceMiles <= 3,
+    phOnlyUntil: distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
+    compound: true,
+    parts
+  };
+}
+
     function showApp(email) {
       loggedInEmail.textContent = email;
       loginScreen.classList.add("hidden");
@@ -3170,8 +3224,54 @@ function buildSection(title, bookings) {
 
     if (operational) {
       try {
-        const recalculated = await recalculateSinglePartBookingUpdate(primary, updated);
-        Object.assign(updated, recalculated);
+        if (operational) {
+  try {
+    const compound = await expandBookingToCompound(primary, updated);
+
+    if (compound) {
+      // APPLY PART 1 TO EXISTING DOCUMENT
+      const first = compound.parts[0];
+
+      Object.assign(updated, {
+        ...compound,
+        ...first,
+        totalParts: compound.parts.length
+      });
+
+      // CREATE ADDITIONAL PART DOCUMENTS
+      const groupId = primary.groupId;
+
+      for (let i = 1; i < compound.parts.length; i++) {
+        const part = compound.parts[i];
+
+        await addDoc(collection(db, "jobs"), {
+          ...primary,
+          ...updated,
+          ...part,
+          groupId,
+          acceptedByDriverId: "",
+          status: "pending",
+          lifecycle: [
+            ...(primary.lifecycle || []),
+            buildLifecycleEntry(
+              "system",
+              "Created as compound split from amendment",
+              { partIndex: part.partIndex }
+            )
+          ]
+        });
+      }
+
+    } else {
+      const recalculated = await recalculateSinglePartBookingUpdate(primary, updated);
+      Object.assign(updated, recalculated);
+    }
+
+  } catch (err) {
+    window.alert(err.message || "Failed to recalculate amended booking.");
+    return;
+  }
+}
       } catch (err) {
         window.alert(err.message || "Failed to recalculate amended booking.");
         return;
