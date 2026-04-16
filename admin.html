@@ -2229,10 +2229,9 @@ function calculatePHPrice(miles, passengers, dateTimeString) {
       const q = query(collection(db, "drivers"), orderBy("createdAt", "desc"));
       const snapshot = await getDocs(q);
 
-      cachedDrivers = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data()
-      }));
+      cachedDrivers = snapshot.docs.map((docSnap) => (
+        {...docSnap.data(), id: docSnap.id}
+      ));
 
       renderDrivers(cachedDrivers);
     }
@@ -2811,9 +2810,9 @@ async function loadJobs() {
   const snapshot = await getDocs(q);
 
   cachedJobs = snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
+  ...doc.data(),
+  id: doc.id
+}));
 
   renderJobs();
 }
@@ -3291,10 +3290,10 @@ function buildSection(title, bookings) {
     );
 
     const freshParts = freshSnapshot.docs
-      .map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data()
-      }))
+  .map((docSnap) => ({
+    ...docSnap.data(),
+    id: docSnap.id
+  }))
       .sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
 
     if (!freshParts.length) {
@@ -3359,44 +3358,46 @@ console.log("REBUILT parts:", JSON.stringify(rebuilt.parts, null, 2));
 
     const firstPart = rebuilt.parts[0];
 
-    batch.set(doc(db, "jobs", survivor.id), {
-      ...freshParts[0],
-      ...baseGroupPayload,
-      ...firstPart,
-      groupId: primary.groupId,
-      lifecycle: [
-        ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
-        groupLifecycleEntry,
-        buildLifecycleEntry(
-          "system",
-          rebuilt.parts.length > 1
-            ? "Rebuilt booking group from amendment"
-            : "Collapsed back to single part from amendment"
-        )
-      ]
-    });
+    const { id: _survivorId, ...survivorData } = freshParts[0];
+
+batch.set(doc(db, "jobs", survivor.id), {
+  ...survivorData,
+  ...baseGroupPayload,
+  ...firstPart,
+  groupId: primary.groupId,
+  lifecycle: [
+    ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
+    groupLifecycleEntry,
+    buildLifecycleEntry(
+      "system",
+      rebuilt.parts.length > 1
+        ? "Rebuilt booking group from amendment"
+        : "Collapsed back to single part from amendment"
+    )
+  ]
+});
 
     for (let i = 1; i < rebuilt.parts.length; i++) {
       const newRef = doc(collection(db, "jobs"));
       const part = rebuilt.parts[i];
 
       batch.set(newRef, {
-        ...freshParts[0],
-        ...baseGroupPayload,
-        ...part,
-        groupId: primary.groupId,
-        createdAt: serverTimestamp(),
-        createdBy: normaliseEmail(auth.currentUser?.email),
-        lifecycle: [
-          ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
-          groupLifecycleEntry,
-          buildLifecycleEntry(
-            "system",
-            "Created as compound split from amendment",
-            { partIndex: part.partIndex }
-          )
-        ]
-      });
+  ...survivorData,
+  ...baseGroupPayload,
+  ...part,
+  groupId: primary.groupId,
+  createdAt: serverTimestamp(),
+  createdBy: normaliseEmail(auth.currentUser?.email),
+  lifecycle: [
+    ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
+    groupLifecycleEntry,
+    buildLifecycleEntry(
+      "system",
+      "Created as compound split from amendment",
+      { partIndex: part.partIndex }
+    )
+  ]
+});
     }
 
     for (let i = 1; i < freshParts.length; i++) {
@@ -3411,8 +3412,8 @@ console.log("REBUILT parts:", JSON.stringify(rebuilt.parts, null, 2));
 
 const verifyParts = verifySnapshot.docs
   .map((docSnap) => ({
-    id: docSnap.id,
-    ...docSnap.data()
+    ...docSnap.data(),
+    id: docSnap.id
   }))
   .sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
 
