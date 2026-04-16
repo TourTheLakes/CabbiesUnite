@@ -3353,6 +3353,7 @@ if (rebuiltParts.length === 1) {
   await loadJobs();
   editMode = false;
   return;
+  
 
 for (let i = 0; i < Math.min(existingParts.length, rebuiltParts.length); i++) {
   const existing = existingParts[i];
@@ -3408,16 +3409,16 @@ for (let i = rebuiltParts.length; i < existingParts.length; i++) {
   batch.delete(doc(db, "jobs", existingParts[i].id));
 }
     await batch.commit();
-    await loadJobs();
-    editMode = false;
-    return;
+await loadJobs();
+editMode = false;
+return;
 
-      } catch (err) {
-        window.alert(err.message || "Failed to recalculate amended booking.");
-        return;
-      }
-    }
-  });
+} catch (err) {
+  window.alert(err.message || "Failed to recalculate amended booking.");
+  return;
+}
+}
+});
 
   if (feeOverrideBtn) {
   let feeEditMode = false;
