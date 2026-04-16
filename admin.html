@@ -2783,10 +2783,17 @@ async function loadJobs() {
   });
 
   const groupedBookings = Object.entries(groups).map(([groupId, parts]) => {
-    parts.sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
-    const primary = parts[0];
-    return { groupId, parts, primary };
-  });
+  parts.sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
+  const primary = parts[0];
+
+  const editSeed = {
+    ...primary,
+    passengerCount: parts.reduce((sum, part) => sum + Number(part.passengerCount || 0), 0),
+    luggageCount: parts.reduce((sum, part) => sum + Number(part.luggageCount || 0), 0)
+  };
+
+  return { groupId, parts, primary, editSeed };
+});
 
   const filteredBookings = groupedBookings.filter(({ primary }) => {
     if (!phoneTerm) return true;
@@ -3113,9 +3120,10 @@ function buildSection(title, bookings) {
     const groupId = card.dataset.jobGroup;
     const booking = groupedBookings.find((b) => b.groupId === groupId);
 
-    if (!booking) return;
+        if (!booking) return;
 
     const primary = booking.primary;
+    const editSeed = booking.editSeed;
 
     if (!editMode) {
       editMode = true;
@@ -3186,7 +3194,7 @@ function buildSection(title, bookings) {
       return;
     }
 
-    const updated = { ...primary };
+    const updated = { ...editSeed };
 
     card.querySelectorAll(".edit-field").forEach((input) => {
       const field = input.dataset.field;
