@@ -3400,6 +3400,7 @@ function buildSection(title, bookings) {
     await loadJobs();
     editMode = false;
     return;
+  }
 
   } catch (err) {
     window.alert(err.message || "Failed to recalculate amended booking.");
