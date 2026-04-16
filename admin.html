@@ -1580,6 +1580,60 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
   }
 }
 
+    async function recalculateSinglePartBookingUpdate(primary, updated) {
+  const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
+  const distanceMiles = applyDistanceBuffer(rawMiles);
+  const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+
+  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
+
+  const activeFleet = getActiveFleet(cachedDrivers);
+
+  const vehiclePlan = solveVehiclePlan(
+    updated.passengerCount,
+    updated.luggageSize,
+    updated.luggageCount,
+    activeFleet
+  );
+
+  if (!vehiclePlan) {
+    throw new Error("No active vehicle combination can fulfil this amended booking.");
+  }
+
+  if (vehiclePlan.vehicles.length !== 1) {
+    throw new Error("This amended booking now requires multiple vehicles. Compound recalculation is not wired yet.");
+  }
+
+  const vehicle = vehiclePlan.vehicles[0];
+
+  const vehiclePrice =
+    distanceMiles <= 3
+      ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
+      : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
+
+  return {
+    scheduledAt,
+    distanceMiles: Number(distanceMiles.toFixed(2)),
+    hcPrice: Number(hcPrice.toFixed(2)),
+    phPrice: Number(phPrice.toFixed(2)),
+    liveQuotedPrice: Number(liveQuotedPrice.toFixed(2)),
+    quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
+    totalPrice: Number(vehiclePrice.toFixed(2)),
+    vehiclePrice: Number(vehiclePrice.toFixed(2)),
+    passengerCount: vehicle.passengers,
+    luggageSize: vehicle.luggageSize,
+    luggageCount: vehicle.luggageCount,
+    requiredSeats: vehicle.capacity,
+    compound: false,
+    totalParts: 1,
+    partIndex: 1,
+    isShortJob: distanceMiles <= 3,
+    phOnlyUntil: distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null
+  };
+}
+
     function showApp(email) {
       loggedInEmail.textContent = email;
       loginScreen.classList.add("hidden");
@@ -3104,7 +3158,7 @@ function buildSection(title, bookings) {
     console.log("PRIMARY luggageCount:", primary.luggageCount);
     console.log("UPDATED luggageCount:", updated.luggageCount);
 
-    const changedFields = getChangedFields(primary, updated);
+      const changedFields = getChangedFields(primary, updated);
 
     if (!changedFields.length) {
       await loadJobs();
@@ -3113,6 +3167,16 @@ function buildSection(title, bookings) {
     }
 
     const operational = isOperationalChange(primary, updated);
+
+    if (operational) {
+      try {
+        const recalculated = await recalculateSinglePartBookingUpdate(primary, updated);
+        Object.assign(updated, recalculated);
+      } catch (err) {
+        window.alert(err.message || "Failed to recalculate amended booking.");
+        return;
+      }
+    }
 
     const nextLifecycle = [
       ...(Array.isArray(primary.lifecycle) ? primary.lifecycle : []),
