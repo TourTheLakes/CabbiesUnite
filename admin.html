@@ -3355,11 +3355,6 @@ function buildSection(title, bookings) {
     editMode = false;
     return;
 
-  } catch (err) {
-    window.alert(err.message || "Failed to recalculate amended booking.");
-    return;
-  }
-}
       } catch (err) {
         window.alert(err.message || "Failed to recalculate amended booking.");
         return;
