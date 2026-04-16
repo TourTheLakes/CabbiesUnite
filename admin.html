@@ -3268,11 +3268,6 @@ function buildSection(title, bookings) {
       updated[field] = value;
     });
 
-    console.log("PRIMARY luggageSize:", primary.luggageSize);
-    console.log("UPDATED luggageSize:", updated.luggageSize);
-    console.log("PRIMARY luggageCount:", primary.luggageCount);
-    console.log("UPDATED luggageCount:", updated.luggageCount);
-
       const changedFields = getChangedFields(editSeed, updated);
 
     if (!changedFields.length) {
@@ -3308,13 +3303,6 @@ function buildSection(title, bookings) {
       },
       updated
     );
-
-    console.log("UPDATED passengerCount:", updated.passengerCount);
-console.log("UPDATED luggageSize:", updated.luggageSize);
-console.log("UPDATED luggageCount:", updated.luggageCount);
-console.log("FRESH parts length:", freshParts.length);
-console.log("REBUILT parts length:", rebuilt.parts.length);
-console.log("REBUILT parts:", JSON.stringify(rebuilt.parts, null, 2));
 
     const groupLifecycleEntry = buildLifecycleEntry(
       "amended",
@@ -3416,9 +3404,6 @@ const verifyParts = verifySnapshot.docs
     id: docSnap.id
   }))
   .sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
-
-console.log("VERIFY parts length after commit:", verifyParts.length);
-console.log("VERIFY parts after commit:", JSON.stringify(verifyParts, null, 2));
     
     await loadJobs();
     editMode = false;
