@@ -3287,25 +3287,28 @@ function buildSection(title, bookings) {
     if (operational) {
   try {
     const freshSnapshot = await getDocs(
-  query(collection(db, "jobs"), where("groupId", "==", primary.groupId))
-);
+      query(collection(db, "jobs"), where("groupId", "==", primary.groupId))
+    );
 
-const freshParts = freshSnapshot.docs.map((docSnap) => ({
-  id: docSnap.id,
-  ...docSnap.data()
-})).sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
+    const freshParts = freshSnapshot.docs
+      .map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }))
+      .sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
 
-if (!freshParts.length) {
-  throw new Error("No live booking parts found for this group.");
-}
+    if (!freshParts.length) {
+      throw new Error("No live booking parts found for this group.");
+    }
 
-const liveBooking = {
-  ...booking,
-  parts: freshParts,
-  primary: freshParts[0]
-};
-
-const rebuilt = await rebuildBookingGroupFromTotals(liveBooking, updated);
+    const rebuilt = await rebuildBookingGroupFromTotals(
+      {
+        ...booking,
+        parts: freshParts,
+        primary: freshParts[0]
+      },
+      updated
+    );
 
     const groupLifecycleEntry = buildLifecycleEntry(
       "amended",
@@ -3313,110 +3316,95 @@ const rebuilt = await rebuildBookingGroupFromTotals(liveBooking, updated);
       { changes: changedFields }
     );
 
-    const existingParts = [...liveBooking.parts].sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
+    const survivor = freshParts[0];
     const batch = writeBatch(db);
-    const rebuiltParts = rebuilt.parts;
 
-// DEDICATED COLLAPSE PATH: MANY -> ONE
-if (rebuiltParts.length === 1) {
-  const survivor = existingParts[0];
-  const single = rebuiltParts[0];
+    const baseGroupPayload = {
+      customerName: updated.customerName,
+      customerPhonePreferred: updated.customerPhonePreferred,
+      notes: updated.notes,
+      pickupAddress: updated.pickupAddress,
+      dropoffAddress: updated.dropoffAddress,
+      scheduledDate: updated.scheduledDate,
+      scheduledTime: updated.scheduledTime,
+      scheduledAt: rebuilt.scheduledAt,
+      passengerCount: updated.passengerCount,
+      petsRequired: updated.petsRequired,
+      luggageSize: updated.luggageSize,
+      luggageCount: updated.luggageCount,
+      distanceMiles: rebuilt.distanceMiles,
+      hcPrice: rebuilt.hcPrice,
+      phPrice: rebuilt.phPrice,
+      liveQuotedPrice: rebuilt.liveQuotedPrice,
+      quotedPriceInitial: rebuilt.quotedPriceInitial,
+      quotedPriceCurrent: rebuilt.quotedPriceCurrent,
+      totalPrice: rebuilt.totalPrice,
+      isShortJob: rebuilt.isShortJob,
+      phOnlyUntil: rebuilt.phOnlyUntil,
+      compound: rebuilt.parts.length > 1,
+      totalParts: rebuilt.parts.length,
+      acceptedByDriverId: "",
+      status: "pending",
+      feeCharged: false,
+      updatedAt: serverTimestamp(),
+      lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+    };
 
-  batch.update(doc(db, "jobs", survivor.id), {
-    ...updated,
-    ...rebuilt,
-    ...single,
-    groupId: primary.groupId,
-    compound: false,
-    totalParts: 1,
-    partIndex: 1,
-    lifecycle: [
-      ...(Array.isArray(survivor.lifecycle) ? survivor.lifecycle : []),
-      groupLifecycleEntry,
-      buildLifecycleEntry(
-        "system",
-        "Collapsed back to single part from amendment"
-      )
-    ],
-    acceptedByDriverId: "",
-    status: "pending",
-    feeCharged: false,
-    updatedAt: serverTimestamp(),
-    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-  });
+    const firstPart = rebuilt.parts[0];
 
-  for (let i = 1; i < existingParts.length; i++) {
-    batch.delete(doc(db, "jobs", existingParts[i].id));
-  }
+    batch.set(doc(db, "jobs", survivor.id), {
+      ...freshParts[0],
+      ...baseGroupPayload,
+      ...firstPart,
+      groupId: primary.groupId,
+      lifecycle: [
+        ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
+        groupLifecycleEntry,
+        buildLifecycleEntry(
+          "system",
+          rebuilt.parts.length > 1
+            ? "Rebuilt booking group from amendment"
+            : "Collapsed back to single part from amendment"
+        )
+      ]
+    });
 
-  await batch.commit();
-  await loadJobs();
-  editMode = false;
-  return;
-}
-  
-for (let i = 0; i < Math.min(existingParts.length, rebuiltParts.length); i++) {
-  const existing = existingParts[i];
-  const part = rebuiltParts[i];
+    for (let i = 1; i < rebuilt.parts.length; i++) {
+      const newRef = doc(collection(db, "jobs"));
+      const part = rebuilt.parts[i];
 
-  batch.update(doc(db, "jobs", existing.id), {
-    ...updated,
-    ...rebuilt,
-    ...part,
-    groupId: primary.groupId,
-    lifecycle: [
-      ...(Array.isArray(existing.lifecycle) ? existing.lifecycle : []),
-      groupLifecycleEntry
-    ],
-    acceptedByDriverId: "",
-    status: "pending",
-    feeCharged: false,
-    updatedAt: serverTimestamp(),
-    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-  });
-}
+      batch.set(newRef, {
+        ...freshParts[0],
+        ...baseGroupPayload,
+        ...part,
+        groupId: primary.groupId,
+        createdAt: serverTimestamp(),
+        createdBy: normaliseEmail(auth.currentUser?.email),
+        lifecycle: [
+          ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
+          groupLifecycleEntry,
+          buildLifecycleEntry(
+            "system",
+            "Created as compound split from amendment",
+            { partIndex: part.partIndex }
+          )
+        ]
+      });
+    }
 
-for (let i = existingParts.length; i < rebuiltParts.length; i++) {
-  const part = rebuiltParts[i];
-  const newRef = doc(collection(db, "jobs"));
+    for (let i = 1; i < freshParts.length; i++) {
+      batch.delete(doc(db, "jobs", freshParts[i].id));
+    }
 
-  batch.set(newRef, {
-    ...primary,
-    ...updated,
-    ...rebuilt,
-    ...part,
-    groupId: primary.groupId,
-    acceptedByDriverId: "",
-    status: "pending",
-    feeCharged: false,
-    lifecycle: [
-      ...(Array.isArray(primary.lifecycle) ? primary.lifecycle : []),
-      groupLifecycleEntry,
-      buildLifecycleEntry(
-        "system",
-        "Created as compound split from amendment",
-        { partIndex: part.partIndex }
-      )
-    ],
-    createdAt: primary.createdAt || serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    createdBy: primary.createdBy || normaliseEmail(auth.currentUser?.email),
-    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-  });
-}
-
-for (let i = rebuiltParts.length; i < existingParts.length; i++) {
-  batch.delete(doc(db, "jobs", existingParts[i].id));
-}
     await batch.commit();
-await loadJobs();
-editMode = false;
-return;
+    await loadJobs();
+    editMode = false;
+    return;
 
-} catch (err) {
-  window.alert(err.message || "Failed to recalculate amended booking.");
-  return;
-}
+  } catch (err) {
+    window.alert(err.message || "Failed to recalculate amended booking.");
+    return;
+  }
 }
 });
 
