@@ -3310,6 +3310,13 @@ function buildSection(title, bookings) {
       updated
     );
 
+    console.log("UPDATED passengerCount:", updated.passengerCount);
+console.log("UPDATED luggageSize:", updated.luggageSize);
+console.log("UPDATED luggageCount:", updated.luggageCount);
+console.log("FRESH parts length:", freshParts.length);
+console.log("REBUILT parts length:", rebuilt.parts.length);
+console.log("REBUILT parts:", JSON.stringify(rebuilt.parts, null, 2));
+
     const groupLifecycleEntry = buildLifecycleEntry(
       "amended",
       "Operational admin amendment",
@@ -3400,7 +3407,6 @@ function buildSection(title, bookings) {
     await loadJobs();
     editMode = false;
     return;
-  }
 
   } catch (err) {
     window.alert(err.message || "Failed to recalculate amended booking.");
