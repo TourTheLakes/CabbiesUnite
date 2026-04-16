@@ -3313,63 +3313,100 @@ const rebuilt = await rebuildBookingGroupFromTotals(liveBooking, updated);
     );
 
     const existingParts = [...liveBooking.parts].sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
-    const rebuiltParts = rebuilt.parts;
+const rebuiltParts = rebuilt.parts;
 
-    // UPDATE EXISTING PARTS THAT STILL HAVE A MATCH
-    for (let i = 0; i < Math.min(existingParts.length, rebuiltParts.length); i++) {
-      const existing = existingParts[i];
-      const part = rebuiltParts[i];
+// DEDICATED COLLAPSE PATH: MANY -> ONE
+if (rebuiltParts.length === 1) {
+  const survivor = existingParts[0];
+  const single = rebuiltParts[0];
 
-      await updateDoc(doc(db, "jobs", existing.id), {
-        ...updated,
-        ...rebuilt,
-        ...part,
-        groupId: primary.groupId,
-        lifecycle: [
-          ...(Array.isArray(existing.lifecycle) ? existing.lifecycle : []),
-          groupLifecycleEntry
-        ],
-        acceptedByDriverId: "",
-        status: "pending",
-        feeCharged: false,
-        updatedAt: serverTimestamp(),
-        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-      });
-    }
+  await updateDoc(doc(db, "jobs", survivor.id), {
+    ...updated,
+    ...rebuilt,
+    ...single,
+    groupId: primary.groupId,
+    compound: false,
+    totalParts: 1,
+    partIndex: 1,
+    lifecycle: [
+      ...(Array.isArray(survivor.lifecycle) ? survivor.lifecycle : []),
+      groupLifecycleEntry,
+      buildLifecycleEntry(
+        "system",
+        "Collapsed back to single part from amendment"
+      )
+    ],
+    acceptedByDriverId: "",
+    status: "pending",
+    feeCharged: false,
+    updatedAt: serverTimestamp(),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  });
 
-    // CREATE NEW PARTS IF THE REBUILT PLAN NEEDS MORE
-    for (let i = existingParts.length; i < rebuiltParts.length; i++) {
-      const part = rebuiltParts[i];
+  for (let i = 1; i < existingParts.length; i++) {
+    await deleteDoc(doc(db, "jobs", existingParts[i].id));
+  }
 
-      await addDoc(collection(db, "jobs"), {
-        ...primary,
-        ...updated,
-        ...rebuilt,
-        ...part,
-        groupId: primary.groupId,
-        acceptedByDriverId: "",
-        status: "pending",
-        feeCharged: false,
-        lifecycle: [
-          ...(Array.isArray(primary.lifecycle) ? primary.lifecycle : []),
-          groupLifecycleEntry,
-          buildLifecycleEntry(
-            "system",
-            "Created as compound split from amendment",
-            { partIndex: part.partIndex }
-          )
-        ],
-        createdAt: primary.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: primary.createdBy || normaliseEmail(auth.currentUser?.email),
-        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-      });
-    }
+  await loadJobs();
+  editMode = false;
+  return;
+}
 
-    // DELETE SURPLUS OLD PARTS IF THE REBUILT PLAN NEEDS FEWER
-    for (let i = rebuiltParts.length; i < existingParts.length; i++) {
-      await deleteDoc(doc(db, "jobs", existingParts[i].id));
-    }
+// UPDATE EXISTING PARTS THAT STILL HAVE A MATCH
+for (let i = 0; i < Math.min(existingParts.length, rebuiltParts.length); i++) {
+  const existing = existingParts[i];
+  const part = rebuiltParts[i];
+
+  await updateDoc(doc(db, "jobs", existing.id), {
+    ...updated,
+    ...rebuilt,
+    ...part,
+    groupId: primary.groupId,
+    lifecycle: [
+      ...(Array.isArray(existing.lifecycle) ? existing.lifecycle : []),
+      groupLifecycleEntry
+    ],
+    acceptedByDriverId: "",
+    status: "pending",
+    feeCharged: false,
+    updatedAt: serverTimestamp(),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  });
+}
+
+// CREATE NEW PARTS IF THE REBUILT PLAN NEEDS MORE
+for (let i = existingParts.length; i < rebuiltParts.length; i++) {
+  const part = rebuiltParts[i];
+
+  await addDoc(collection(db, "jobs"), {
+    ...primary,
+    ...updated,
+    ...rebuilt,
+    ...part,
+    groupId: primary.groupId,
+    acceptedByDriverId: "",
+    status: "pending",
+    feeCharged: false,
+    lifecycle: [
+      ...(Array.isArray(primary.lifecycle) ? primary.lifecycle : []),
+      groupLifecycleEntry,
+      buildLifecycleEntry(
+        "system",
+        "Created as compound split from amendment",
+        { partIndex: part.partIndex }
+      )
+    ],
+    createdAt: primary.createdAt || serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdBy: primary.createdBy || normaliseEmail(auth.currentUser?.email),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  });
+}
+
+// DELETE SURPLUS OLD PARTS IF THE REBUILT PLAN NEEDS FEWER
+for (let i = rebuiltParts.length; i < existingParts.length; i++) {
+  await deleteDoc(doc(db, "jobs", existingParts[i].id));
+}
 
     await loadJobs();
     editMode = false;
