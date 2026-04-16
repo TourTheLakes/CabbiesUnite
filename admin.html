@@ -2281,6 +2281,7 @@ function getManualBookingFormData() {
       luggageCount: vehicle.luggageCount,
       requiredSeats: vehicle.capacity,
       vehiclePrice: vehicle.price
+      effectiveFee: calculateDriverFeeFromJobValue(vehicle.price),
     });
   }
 }
