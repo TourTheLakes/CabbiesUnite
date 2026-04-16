@@ -1100,6 +1100,7 @@
   getDocs,
   getDoc,
   query,
+  where,
   orderBy,
   serverTimestamp,
   doc,
@@ -3075,7 +3076,7 @@ function buildSection(title, bookings) {
                 <div class="job-section">
                   <strong>Allocation</strong>
                   <div>Status: ${escapeHtml(primary.status || "-")}</div>
-                  <div>Compound: ${primary.compound ? "Yes" : "No"}</div>
+                  <div>Compound: ${parts.length > 1 ? "Yes" : "No"}</div>
                   <div>Required seats: ${Number(primary.requiredSeats || 0)}</div>
                   <div>Short job: ${primary.isShortJob ? "Yes" : "No"}</div>
                   <div>PH hold until: ${primary.phOnlyUntil ? escapeHtml(String(primary.phOnlyUntil)) : "-"}</div>
@@ -3272,7 +3273,7 @@ function buildSection(title, bookings) {
     console.log("PRIMARY luggageCount:", primary.luggageCount);
     console.log("UPDATED luggageCount:", updated.luggageCount);
 
-      const changedFields = getChangedFields(primary, updated);
+      const changedFields = getChangedFields(editSeed, updated);
 
     if (!changedFields.length) {
       await loadJobs();
@@ -3284,7 +3285,26 @@ function buildSection(title, bookings) {
 
     if (operational) {
   try {
-    const rebuilt = await rebuildBookingGroupFromTotals(booking, updated);
+    const freshSnapshot = await getDocs(
+  query(collection(db, "jobs"), where("groupId", "==", primary.groupId))
+);
+
+const freshParts = freshSnapshot.docs.map((docSnap) => ({
+  id: docSnap.id,
+  ...docSnap.data()
+})).sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
+
+if (!freshParts.length) {
+  throw new Error("No live booking parts found for this group.");
+}
+
+const liveBooking = {
+  ...booking,
+  parts: freshParts,
+  primary: freshParts[0]
+};
+
+const rebuilt = await rebuildBookingGroupFromTotals(liveBooking, updated);
 
     const groupLifecycleEntry = buildLifecycleEntry(
       "amended",
@@ -3292,7 +3312,7 @@ function buildSection(title, bookings) {
       { changes: changedFields }
     );
 
-    const existingParts = [...booking.parts].sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
+    const existingParts = [...liveBooking.parts].sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
     const rebuiltParts = rebuilt.parts;
 
     // UPDATE EXISTING PARTS THAT STILL HAVE A MATCH
