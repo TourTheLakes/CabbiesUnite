@@ -2535,6 +2535,66 @@ if (action === "confirm-wallet") {
   });
 }
 
+    function attachPlacesAutocompleteToInput(input) {
+  if (!input || !window.google || !google.maps?.places) return;
+
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: "gb" }
+  });
+
+  function buildPlaceLabel(place) {
+    const name = String(place?.name || "").trim();
+    const address = String(place?.formatted_address || "").trim();
+
+    if (name && address) {
+      if (address.toLowerCase().startsWith(name.toLowerCase())) {
+        return address;
+      }
+      return `${name}, ${address}`;
+    }
+
+    return name || address || "";
+  }
+
+  autocomplete.addListener("place_changed", () => {
+    const place = autocomplete.getPlace();
+    const label = buildPlaceLabel(place);
+
+    if (label) {
+      input.value = label;
+    }
+  });
+}function attachPlacesAutocompleteToInput(input) {
+  if (!input || !window.google || !google.maps?.places) return;
+
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: "gb" }
+  });
+
+  function buildPlaceLabel(place) {
+    const name = String(place?.name || "").trim();
+    const address = String(place?.formatted_address || "").trim();
+
+    if (name && address) {
+      if (address.toLowerCase().startsWith(name.toLowerCase())) {
+        return address;
+      }
+      return `${name}, ${address}`;
+    }
+
+    return name || address || "";
+  }
+
+  autocomplete.addListener("place_changed", () => {
+    const place = autocomplete.getPlace();
+    const label = buildPlaceLabel(place);
+
+    if (label) {
+      input.value = label;
+    }
+  });
+}
+
     googleSignInBtn.addEventListener("click", signInAdmin);
 signOutBtn.addEventListener("click", signOutAdmin);
 
@@ -3038,6 +3098,10 @@ function buildSection(title, bookings) {
         input.addEventListener("mouseup", (event) => event.stopPropagation());
 
         el.replaceWith(input);
+
+        if (field === "pickupAddress" || field === "dropoffAddress") {
+          attachPlacesAutocompleteToInput(input);
+        }
       });
 
       return;
