@@ -1105,7 +1105,8 @@
   serverTimestamp,
   doc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -3313,14 +3314,15 @@ const rebuilt = await rebuildBookingGroupFromTotals(liveBooking, updated);
     );
 
     const existingParts = [...liveBooking.parts].sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
-const rebuiltParts = rebuilt.parts;
+    const batch = writeBatch(db);
+    const rebuiltParts = rebuilt.parts;
 
 // DEDICATED COLLAPSE PATH: MANY -> ONE
 if (rebuiltParts.length === 1) {
   const survivor = existingParts[0];
   const single = rebuiltParts[0];
 
-  await updateDoc(doc(db, "jobs", survivor.id), {
+  batch.update(doc(db, "jobs", survivor.id), {
     ...updated,
     ...rebuilt,
     ...single,
@@ -3344,20 +3346,19 @@ if (rebuiltParts.length === 1) {
   });
 
   for (let i = 1; i < existingParts.length; i++) {
-    await deleteDoc(doc(db, "jobs", existingParts[i].id));
+    batch.delete(doc(db, "jobs", existingParts[i].id));
   }
 
+  await batch.commit();
   await loadJobs();
   editMode = false;
   return;
-}
 
-// UPDATE EXISTING PARTS THAT STILL HAVE A MATCH
 for (let i = 0; i < Math.min(existingParts.length, rebuiltParts.length); i++) {
   const existing = existingParts[i];
   const part = rebuiltParts[i];
 
-  await updateDoc(doc(db, "jobs", existing.id), {
+  batch.update(doc(db, "jobs", existing.id), {
     ...updated,
     ...rebuilt,
     ...part,
@@ -3374,11 +3375,11 @@ for (let i = 0; i < Math.min(existingParts.length, rebuiltParts.length); i++) {
   });
 }
 
-// CREATE NEW PARTS IF THE REBUILT PLAN NEEDS MORE
 for (let i = existingParts.length; i < rebuiltParts.length; i++) {
   const part = rebuiltParts[i];
+  const newRef = doc(collection(db, "jobs"));
 
-  await addDoc(collection(db, "jobs"), {
+  batch.set(newRef, {
     ...primary,
     ...updated,
     ...rebuilt,
@@ -3403,11 +3404,10 @@ for (let i = existingParts.length; i < rebuiltParts.length; i++) {
   });
 }
 
-// DELETE SURPLUS OLD PARTS IF THE REBUILT PLAN NEEDS FEWER
 for (let i = rebuiltParts.length; i < existingParts.length; i++) {
-  await deleteDoc(doc(db, "jobs", existingParts[i].id));
+  batch.delete(doc(db, "jobs", existingParts[i].id));
 }
-
+    await batch.commit();
     await loadJobs();
     editMode = false;
     return;
