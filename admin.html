@@ -3053,7 +3053,17 @@ function buildSection(title, bookings) {
               </div>
 
               <div class="job-row">
-                <span>Driver: ${escapeHtml(driverDisplayMap[groupId] || "On wall")}</span>
+                <span>Driver: ${
+                    total === 1
+                     ? escapeHtml(partDriverDisplayMap[parts[0].id] || "On wall")
+                      : escapeHtml(
+                         parts.every((part) => String(part.status || "").toLowerCase() === "accepted")
+                     ? "Fully allocated"
+                      : parts.some((part) => String(part.status || "").toLowerCase() === "accepted")
+                       ? "Partially allocated"
+                     : "On wall"
+                      )
+                    }</span>
                 <span>Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</span>
               </div>
             </div>
