@@ -3186,12 +3186,12 @@ function buildSection(title, bookings) {
         } else if (field === "luggageSize") {
           input = document.createElement("select");
           input.innerHTML = `
-            <option value="none">none</option>
-            <option value="small">small</option>
-            <option value="medium">medium</option>
-            <option value="large">large</option>
-          `;
-          input.value = value.toLowerCase();
+           <option value="none">None</option>
+           <option value="1-2">1 to 2</option>
+           <option value="2-3">2 to 3</option>
+           <option value="3-4">3 to 4</option>
+                `;
+          input.value = value.trim();
         } else {
           input = document.createElement("input");
 
@@ -3255,6 +3255,11 @@ function buildSection(title, bookings) {
 
       updated[field] = value;
     });
+
+    if (updated.luggageSize === "1-2") updated.luggageCount = 2;
+      else if (updated.luggageSize === "2-3") updated.luggageCount = 3;
+      else if (updated.luggageSize === "3-4") updated.luggageCount = 4;
+      else updated.luggageCount = 0;
 
       const changedFields = getChangedFields(editSeed, updated);
 
