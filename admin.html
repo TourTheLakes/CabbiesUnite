@@ -3154,7 +3154,7 @@ function buildSection(title, bookings) {
                         <span>Vehicle price: £${Number(part.vehiclePrice || 0).toFixed(2)}</span>
                       </div>
                       <div class="job-row">
-                        <span>Accepted by: ${escapeHtml(driverDisplayMap[groupId] || "On wall")}</span>
+                       <span>Accepted by: ${escapeHtml(await getDriverDisplayName(part.acceptedByDriverId))}</span>
                       </div>
                     </div>
                   `).join("")}
