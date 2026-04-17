@@ -1849,8 +1849,7 @@ function getBookingDisplayStatus(primary, parts) {
     ["scheduledTime", "Time"],
     ["passengerCount", "Passenger count"],
     ["petsRequired", "Pets required"],
-    ["luggageSize", "Luggage size"],
-    ["luggageCount", "Luggage count"]
+    ["luggageSize", "Luggage Cases"]
   ];
 
   definitions.forEach(([field, label]) => {
@@ -1862,7 +1861,7 @@ function getBookingDisplayStatus(primary, parts) {
       afterValue = afterValue ? "yes" : "no";
     }
 
-    if (field === "passengerCount" || field === "luggageCount") {
+    if (field === "passengerCount") {
       beforeValue = Number(beforeValue || 0);
       afterValue = Number(afterValue || 0);
     }
@@ -1917,8 +1916,7 @@ function formatLifecycleTimestamp(value) {
     original.scheduledTime !== updated.scheduledTime ||
     Number(original.passengerCount || 0) !== Number(updated.passengerCount || 0) ||
     String(original.petsRequired || "") !== String(updated.petsRequired || "") ||
-    String(original.luggageSize || "") !== String(updated.luggageSize || "") ||
-    Number(original.luggageCount || 0) !== Number(updated.luggageCount || 0)
+    String(original.luggageSize || "") !== String(updated.luggageSize || "")
   );
 }
 
@@ -2827,10 +2825,9 @@ async function loadJobs() {
   const primary = parts[0];
 
   const editSeed = {
-    ...primary,
-    passengerCount: parts.reduce((sum, part) => sum + Number(part.passengerCount || 0), 0),
-    luggageCount: parts.reduce((sum, part) => sum + Number(part.luggageCount || 0), 0)
-  };
+  ...primary,
+  passengerCount: parts.reduce((sum, part) => sum + Number(part.passengerCount || 0), 0)
+};
 
   return { groupId, parts, primary, editSeed };
 });
@@ -2959,7 +2956,7 @@ function buildSection(title, bookings) {
 
               <div class="job-row">
                 <span>${Number(primary.passengerCount || 0)} passengers</span>
-                <span>${escapeHtml(primary.luggageSize || "none")} (${Number(primary.luggageCount || 0)})</span>
+                <span>${escapeHtml(primary.luggageSize || "none")}</span>
                 <span>${primary.petsRequired ? "Pets" : "No pets"}</span>
               </div>
 
@@ -3040,11 +3037,6 @@ function buildSection(title, bookings) {
                     <span class="view-field" data-field="luggageSize">${escapeHtml(primary.luggageSize || "none")}</span>
                   </div>
 
-                  <div>
-                    Luggage Count:
-                    <span class="view-field" data-field="luggageCount">${Number(editSeed.luggageCount || 0)}</span>
-                  </div>
-
                   <div>Source: ${escapeHtml(primary.source || "-")}</div>
                 </div>
 
@@ -3081,7 +3073,7 @@ function buildSection(title, bookings) {
                       </div>
                       <div class="job-row">
                         <span>${Number(part.passengerCount || 0)} passengers</span>
-                        <span>${escapeHtml(part.luggageSize || "none")} (${Number(part.luggageCount || 0)})</span>
+                        <span>${escapeHtml(part.luggageSize || "none")}</span>
                       </div>
                       <div class="job-row">
                         <span>Required seats: ${Number(part.requiredSeats || 0)}</span>
@@ -3244,7 +3236,7 @@ function buildSection(title, bookings) {
         value = formatIsoDateToUk(value);
       }
 
-      if (field === "passengerCount" || field === "luggageCount") {
+      if (field === "passengerCount") {
         value = Number(value || 0);
       }
 
