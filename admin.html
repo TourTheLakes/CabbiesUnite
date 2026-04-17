@@ -1374,9 +1374,15 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
       function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) {
   const fleetCounts = getFleetCountByCapacity(activeDrivers);
 
-  const availableCapacities = [8, 6, 4].filter((cap) => fleetCounts[cap] > 0);
+  const availableVehicles = [];
 
-  for (const cap of availableCapacities) {
+  for (let i = 0; i < fleetCounts[4]; i++) availableVehicles.push(4);
+  for (let i = 0; i < fleetCounts[6]; i++) availableVehicles.push(6);
+  for (let i = 0; i < fleetCounts[8]; i++) availableVehicles.push(8);
+
+  availableVehicles.sort((a, b) => b - a);
+
+  for (const cap of availableVehicles) {
     if (canSingleVehicleTakeJob(cap, passengers, luggageSize, luggageCount)) {
       return {
         vehicles: [
@@ -1393,40 +1399,58 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     }
   }
 
-  for (let vehicleCount = 2; vehicleCount <= Math.max(10, passengers); vehicleCount++) {
-    const passengerSplit = splitPassengersEvenly(passengers, vehicleCount);
-    const luggageSplit = allocateLuggageEvenly(luggageCount, vehicleCount);
+  for (let vehicleCount = 2; vehicleCount <= availableVehicles.length; vehicleCount++) {
+    const chosenVehicles = availableVehicles.slice(0, vehicleCount);
+    const totalCapacity = chosenVehicles.reduce((sum, cap) => sum + cap, 0);
 
+    if (totalCapacity < passengers) continue;
+
+    let remainingPassengers = passengers;
     const tentative = [];
-    const remainingFleet = { ...fleetCounts };
-    let valid = true;
 
-    for (let i = 0; i < vehicleCount; i++) {
-      const partPassengers = passengerSplit[i];
-      const partLuggageCount = luggageSplit[i];
+    for (let i = 0; i < chosenVehicles.length; i++) {
+      const cap = chosenVehicles[i];
+      const vehiclesLeft = chosenVehicles.length - i - 1;
+      const minNeededForOthers = vehiclesLeft;
+      const assignable = Math.min(cap, remainingPassengers - minNeededForOthers);
 
-      let matchedCapacity = null;
-
-      for (const cap of [4, 6, 8]) {
-        if (remainingFleet[cap] <= 0) continue;
-        if (canSingleVehicleTakeJob(cap, partPassengers, luggageSize, partLuggageCount)) {
-          matchedCapacity = cap;
-          remainingFleet[cap] -= 1;
-          break;
-        }
-      }
-
-      if (!matchedCapacity) {
-        valid = false;
+      if (assignable < 1) {
+        tentative.length = 0;
         break;
       }
 
       tentative.push({
-        capacity: matchedCapacity,
-        passengers: partPassengers,
+        capacity: cap,
+        passengers: assignable,
         luggageSize,
-        luggageCount: partLuggageCount
+        luggageCount: 0
       });
+
+      remainingPassengers -= assignable;
+    }
+
+    if (remainingPassengers !== 0) {
+      continue;
+    }
+
+    const luggageSplit = allocateLuggageEvenly(luggageCount, tentative.length);
+
+    let valid = true;
+
+    for (let i = 0; i < tentative.length; i++) {
+      tentative[i].luggageCount = luggageSplit[i];
+
+      if (
+        !canSingleVehicleTakeJob(
+          tentative[i].capacity,
+          tentative[i].passengers,
+          tentative[i].luggageSize,
+          tentative[i].luggageCount
+        )
+      ) {
+        valid = false;
+        break;
+      }
     }
 
     if (valid) {
