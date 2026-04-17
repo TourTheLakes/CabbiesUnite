@@ -3303,6 +3303,11 @@ function buildSection(title, bookings) {
       { changes: changedFields }
     );
 
+    const rebuiltLifecycleBase = [
+  ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
+  groupLifecycleEntry
+];
+
     const survivor = freshParts[0];
     const batch = writeBatch(db);
 
