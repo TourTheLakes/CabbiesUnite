@@ -2851,18 +2851,6 @@ async function getDriverDisplayName(driverId) {
   }
 }
 
-    const partDriverDisplayMap = {};
-
-for (const booking of filteredBookings) {
-  for (const part of booking.parts) {
-    const key = part.id;
-
-    partDriverDisplayMap[key] = await getDriverDisplayName(
-      part.acceptedByDriverId
-    );
-  }
-}
-
 async function loadJobs() {
   const jobsList = document.getElementById("jobsList");
   jobsList.innerHTML = `<div class="empty-state">Loading jobs...</div>`;
@@ -2943,6 +2931,18 @@ async function loadJobs() {
       booking.primary.acceptedByDriverId
     );
   }
+
+        const partDriverDisplayMap = {};
+
+for (const booking of filteredBookings) {
+  for (const part of booking.parts) {
+    const key = part.id;
+
+    partDriverDisplayMap[key] = await getDriverDisplayName(
+      part.acceptedByDriverId
+    );
+  }
+}
 
   function buildLifecycleHtml(primary) {
   const lifecycle = Array.isArray(primary.lifecycle) ? primary.lifecycle : [];
