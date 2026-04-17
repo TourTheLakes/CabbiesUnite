@@ -3347,15 +3347,14 @@ batch.set(doc(db, "jobs", survivor.id), {
   ...firstPart,
   groupId: primary.groupId,
   lifecycle: [
-    ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
-    groupLifecycleEntry,
-    buildLifecycleEntry(
-      "system",
-      rebuilt.parts.length > 1
-        ? "Rebuilt booking group from amendment"
-        : "Collapsed back to single part from amendment"
-    )
-  ]
+  ...rebuiltLifecycleBase,
+  buildLifecycleEntry(
+    "system",
+    rebuilt.parts.length > 1
+      ? "Rebuilt booking group from amendment"
+      : "Collapsed back to single part from amendment"
+  )
+]
 });
 
     for (let i = 1; i < rebuilt.parts.length; i++) {
@@ -3370,14 +3369,13 @@ batch.set(doc(db, "jobs", survivor.id), {
   createdAt: serverTimestamp(),
   createdBy: normaliseEmail(auth.currentUser?.email),
   lifecycle: [
-    ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
-    groupLifecycleEntry,
-    buildLifecycleEntry(
-      "system",
-      "Created as compound split from amendment",
-      { partIndex: part.partIndex }
-    )
-  ]
+  ...rebuiltLifecycleBase,
+  buildLifecycleEntry(
+    "system",
+    "Created as compound split from amendment",
+    { partIndex: part.partIndex }
+  )
+]
 });
     }
 
