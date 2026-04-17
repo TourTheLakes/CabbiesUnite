@@ -988,19 +988,14 @@
       </div>
 
       <div class="field">
-        <label for="manualLuggageSize">Luggage size</label>
-        <select id="manualLuggageSize" name="luggageSize" required>
-          <option value="none">None</option>
-          <option value="small">Small</option>
-          <option value="medium">Medium</option>
-          <option value="large">Large</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="manualLuggageCount">Luggage count</label>
-        <input id="manualLuggageCount" name="luggageCount" type="number" min="0" value="0" required />
-      </div>
+  <label for="manualLuggageSize">Luggage Cases</label>
+  <select id="manualLuggageSize" name="luggageSize" required>
+    <option value="none">None</option>
+    <option value="1-2">1 to 2</option>
+    <option value="2-3">2 to 3</option>
+    <option value="3-4">3 to 4</option>
+  </select>
+</div>
 
       <div class="field full">
         <label for="manualNotes">Notes</label>
@@ -1480,7 +1475,7 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
       </div>
       <div class="job-row">
         <span>${vehicle.passengers} passengers</span>
-        <span>${vehicle.luggageSize} (${vehicle.luggageCount})</span>
+        <span>${vehicle.luggageSize}</span>
       </div>
       <div class="job-row">
         <span>Vehicle price</span>
@@ -1627,7 +1622,6 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     vehiclePrice: Number(vehiclePrice.toFixed(2)),
     passengerCount: vehicle.passengers,
     luggageSize: vehicle.luggageSize,
-    luggageCount: vehicle.luggageCount,
     requiredSeats: vehicle.capacity,
     compound: false,
     totalParts: 1,
@@ -2298,7 +2292,6 @@ function getManualBookingFormData() {
     passengerCount: Number(formData.get("passengerCount") || 0),
     petsRequired: String(formData.get("petsRequired") || "no").trim(),
     luggageSize: String(formData.get("luggageSize") || "none").trim(),
-    luggageCount: Number(formData.get("luggageCount") || 0),
     notes: String(formData.get("notes") || "").trim()
   };
 }
@@ -2334,9 +2327,6 @@ function getManualBookingFormData() {
   if (!isValidTime(data.scheduledTime)) return "Time must be valid.";
   if (!Number.isFinite(data.passengerCount) || data.passengerCount < 1 || data.passengerCount > 99) {
     return "Passenger count must be valid.";
-  }
-  if (!Number.isFinite(data.luggageCount) || data.luggageCount < 0) {
-    return "Luggage count cannot be negative.";
   }
       if (data.phoneConfirmed === "no" && !data.preferredPhone) {
   return "Enter the preferred contact number.";
@@ -2479,7 +2469,6 @@ function getManualBookingFormData() {
     document.getElementById("manualPhoneConfirmed").value = "yes";
     document.getElementById("manualPetsRequired").value = "no";
     document.getElementById("manualLuggageSize").value = "none";
-    document.getElementById("manualLuggageCount").value = "0";
     renderManualQuote(null);
     await loadJobs();
   } catch (error) {
@@ -2744,7 +2733,6 @@ resetManualBookingBtn.addEventListener("click", () => {
   document.getElementById("manualPhoneConfirmed").value = "yes";
   document.getElementById("manualPetsRequired").value = "no";
   document.getElementById("manualLuggageSize").value = "none";
-  document.getElementById("manualLuggageCount").value = "0";
   document.getElementById("manualScheduledDate").value = "";
   setManualBookingMessage("");
   renderManualQuote(null);
@@ -2758,7 +2746,6 @@ resetManualBookingBtn.addEventListener("click", () => {
   "manualPassengerCount",
   "manualPetsRequired",
   "manualLuggageSize",
-  "manualLuggageCount"
 ].forEach((id) => {
   const el = document.getElementById(id);
   if (el) {
