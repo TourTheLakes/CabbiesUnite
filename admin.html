@@ -2796,6 +2796,37 @@ try {
   }
 });
 
+  const driverNameCache = {};
+
+async function getDriverDisplayName(driverId) {
+  const cleanId = String(driverId || "").trim();
+  if (!cleanId) return "On wall";
+
+  if (driverNameCache[cleanId]) {
+    return driverNameCache[cleanId];
+  }
+
+  try {
+    const snap = await getDoc(doc(db, "drivers", cleanId));
+
+    if (!snap.exists()) {
+      driverNameCache[cleanId] = "Unknown driver";
+      return "Unknown driver";
+    }
+
+    const data = snap.data();
+    const name = String(data.fullName || "").trim();
+    const email = String(data.googleEmail || "").trim();
+
+    const display = name || email || "Unknown driver";
+    driverNameCache[cleanId] = display;
+    return display;
+  } catch (error) {
+    console.error("Failed driver lookup", error);
+    return "Unknown driver";
+  }
+}
+
 async function loadJobs() {
   const jobsList = document.getElementById("jobsList");
   jobsList.innerHTML = `<div class="empty-state">Loading jobs...</div>`;
@@ -2804,14 +2835,14 @@ async function loadJobs() {
   const snapshot = await getDocs(q);
 
   cachedJobs = snapshot.docs.map(doc => ({
-  ...doc.data(),
-  id: doc.id
-}));
+    ...doc.data(),
+    id: doc.id
+  }));
 
-  renderJobs();
+  await renderJobs();
 }
 
-  function renderJobs() {
+  async function renderJobs() {
   const jobsList = document.getElementById("jobsList");
 
   if (!cachedJobs.length) {
@@ -2869,6 +2900,14 @@ async function loadJobs() {
     activeBookings.push(booking);
   });
 
+  const driverDisplayMap = {};
+
+  for (const booking of filteredBookings) {
+    driverDisplayMap[booking.groupId] = await getDriverDisplayName(
+      booking.primary.acceptedByDriverId
+    );
+  }
+
   function buildLifecycleHtml(primary) {
   const lifecycle = Array.isArray(primary.lifecycle) ? primary.lifecycle : [];
 
@@ -2903,6 +2942,8 @@ async function loadJobs() {
     `;
   }).join("");
 }
+
+    
 
 function buildSection(title, bookings) {
   if (!bookings.length) {
@@ -2976,7 +3017,7 @@ function buildSection(title, bookings) {
               </div>
 
               <div class="job-row">
-                <span>Driver: ${escapeHtml(primary.acceptedByDriverId || "On wall")}</span>
+                <span>Driver: ${escapeHtml(driverDisplayMap[groupId] || "On wall")}</span>
                 <span>Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</span>
               </div>
             </div>
@@ -3089,7 +3130,7 @@ function buildSection(title, bookings) {
                         <span>Vehicle price: £${Number(part.vehiclePrice || 0).toFixed(2)}</span>
                       </div>
                       <div class="job-row">
-                        <span>Accepted by: ${escapeHtml(part.acceptedByDriverId || "On wall")}</span>
+                        <span>Accepted by: ${escapeHtml(driverDisplayMap[groupId] || "On wall")}</span>
                       </div>
                     </div>
                   `).join("")}
