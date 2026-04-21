@@ -2360,16 +2360,6 @@ function getCurrentIsoTimeMinutes() {
   return `${hours}:${minutes}`;
 }
 
-function timeStringToMinutes(value) {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(value || "").trim());
-  if (!match) return null;
-
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-
-  return (hours * 60) + minutes;
-}
-
 function syncManualBookingMode() {
   const isAsap = manualIsAsap?.value === "yes";
 
