@@ -1140,6 +1140,8 @@ const firebaseConfig = {
     const manualBookingMessage = document.getElementById("manualBookingMessage");
     const resetManualBookingBtn = document.getElementById("resetManualBookingBtn");
 
+    let manualBookingMessageTimer = null;
+
     const manualQuotePanel = document.getElementById("manualQuotePanel");
     const quoteDistance = document.getElementById("quoteDistance");
     const quoteHCPrice = document.getElementById("quoteHCPrice");
