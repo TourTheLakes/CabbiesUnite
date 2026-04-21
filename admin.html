@@ -1182,9 +1182,22 @@ const firebaseConfig = {
     }
 
     function setManualBookingMessage(text, type = "") {
-      manualBookingMessage.textContent = text || "";
-      manualBookingMessage.className = type ? `message ${type}` : "message";
-    }
+  manualBookingMessage.textContent = text || "";
+  manualBookingMessage.className = type ? `message ${type}` : "message";
+
+  if (manualBookingMessageTimer) {
+    clearTimeout(manualBookingMessageTimer);
+    manualBookingMessageTimer = null;
+  }
+
+  if (text && type === "success") {
+    manualBookingMessageTimer = setTimeout(() => {
+      manualBookingMessage.textContent = "";
+      manualBookingMessage.className = "message";
+      manualBookingMessageTimer = null;
+    }, 3000);
+  }
+}
 
 function todayUk() {
   const now = new Date();
