@@ -1150,7 +1150,9 @@ const resetManualBookingBtn = document.getElementById("resetManualBookingBtn");
 const manualIsAsap = document.getElementById("manualIsAsap");
 const manualScheduledDate = document.getElementById("manualScheduledDate");
 const manualScheduledTime = document.getElementById("manualScheduledTime");
-const manualAsapHelper = document.getElementById("manualAsapHelper");
+
+const manualScheduledDateField = manualScheduledDate ? manualScheduledDate.closest(".field") : null;
+const manualScheduledTimeField = manualScheduledTime ? manualScheduledTime.closest(".field") : null;
 
 let manualBookingMessageTimer = null;
 
@@ -1282,6 +1284,32 @@ function timeStringToMinutes(value) {
   const minutes = Number(match[2]);
 
   return (hours * 60) + minutes;
+}
+
+    function formatCountdown(msRemaining) {
+  if (!Number.isFinite(msRemaining)) return "Expired";
+
+  const totalSeconds = Math.max(0, Math.floor(msRemaining / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function updateAsapCountdownPills() {
+  const nodes = document.querySelectorAll("[data-asap-expires-at]");
+
+  nodes.forEach((node) => {
+    const expiresAt = Number(node.dataset.asapExpiresAt || 0);
+    const remaining = expiresAt - Date.now();
+
+    if (remaining <= 0) {
+      node.textContent = "Expired";
+      return;
+    }
+
+    node.textContent = `Expires in ${formatCountdown(remaining)}`;
+  });
 }
 
 function combineUkDateAndTime(dateValue, timeValue) {
@@ -2359,18 +2387,32 @@ function getCurrentIsoTimeMinutes() {
 function syncManualBookingMode() {
   const isAsap = manualIsAsap?.value === "yes";
 
-  if (!manualScheduledDate || !manualScheduledTime || !manualAsapHelper) return;
+  if (!manualScheduledDate || !manualScheduledTime) return;
 
   if (isAsap) {
-    manualScheduledDate.value = getTodayIsoDate();
-    manualScheduledTime.value = getCurrentIsoTimeMinutes();
+    manualScheduledDate.value = "";
+    manualScheduledTime.value = "";
     manualScheduledDate.disabled = true;
     manualScheduledTime.disabled = true;
-    manualAsapHelper.classList.remove("hidden");
+
+    if (manualScheduledDateField) {
+      manualScheduledDateField.style.display = "none";
+    }
+
+    if (manualScheduledTimeField) {
+      manualScheduledTimeField.style.display = "none";
+    }
   } else {
     manualScheduledDate.disabled = false;
     manualScheduledTime.disabled = false;
-    manualAsapHelper.classList.add("hidden");
+
+    if (manualScheduledDateField) {
+      manualScheduledDateField.style.display = "";
+    }
+
+    if (manualScheduledTimeField) {
+      manualScheduledTimeField.style.display = "";
+    }
   }
 }
 
@@ -2915,9 +2957,11 @@ jobSearchPhone.addEventListener("input", renderJobs);
     document.getElementById("manualScheduledDate").min = getTodayIsoDate();
 
     manualScheduledDate.min = getTodayIsoDate();
-    syncManualBookingMode();
+syncManualBookingMode();
+updateAsapCountdownPills();
+setInterval(updateAsapCountdownPills, 1000);
 
-    bindNav();
+bindNav();
 
     onAuthStateChanged(auth, async (user) => {
   if (!user) {
@@ -3160,7 +3204,11 @@ function buildSection(title, bookings) {
   <span class="pill">${primary.isAsap ? "ASAP" : `${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}`}</span>
   <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
   <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
-  ${primary.isAsap && primary.asapExpiresAt ? `<span class="pill warn">Expires ${escapeHtml(String(primary.asapExpiresAt))}</span>` : ""}
+  ${
+    primary.isAsap && primary.asapExpiresAt
+      ? `<span class="pill warn" data-asap-expires-at="${Number(primary.asapExpiresAt)}">Expires in --:--</span>`
+      : ""
+  }
 </div>
 
             <div class="job-toggle">
