@@ -2392,13 +2392,6 @@ function getManualBookingFormData() {
   if (!data.dropoffAddress) return "Dropoff address is required.";
       
   if (!data.scheduledDate) return "Date is required.";
-  if (!isValidUkDate(data.scheduledDate)) return "Date must be in dd/mm/yyyy format.";
-
-  if (ukDateToComparableNumber(data.scheduledDate) < ukDateToComparableNumber(todayUk())) {
-    return "Date cannot be before today.";
-  }
-
-      if (!data.scheduledDate) return "Date is required.";
 if (!isValidUkDate(data.scheduledDate)) return "Date must be in dd/mm/yyyy format.";
 
 if (ukDateToComparableNumber(data.scheduledDate) < ukDateToComparableNumber(todayUk())) {
