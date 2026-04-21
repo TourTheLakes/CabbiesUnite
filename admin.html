@@ -1257,6 +1257,21 @@ function isExpired(dateValue) {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || "").trim());
 }
 
+    function getCurrentUkTimeMinutes() {
+  const now = new Date();
+  return (now.getHours() * 60) + now.getMinutes();
+}
+
+function timeStringToMinutes(value) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(value || "").trim());
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  return (hours * 60) + minutes;
+}
+
 function combineUkDateAndTime(dateValue, timeValue) {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(dateValue || "").trim());
   if (!match) return "";
@@ -2382,6 +2397,27 @@ function getManualBookingFormData() {
   if (ukDateToComparableNumber(data.scheduledDate) < ukDateToComparableNumber(todayUk())) {
     return "Date cannot be before today.";
   }
+
+      if (!data.scheduledDate) return "Date is required.";
+if (!isValidUkDate(data.scheduledDate)) return "Date must be in dd/mm/yyyy format.";
+
+if (ukDateToComparableNumber(data.scheduledDate) < ukDateToComparableNumber(todayUk())) {
+  return "Date cannot be before today.";
+}
+
+if (!data.scheduledTime) return "Time is required.";
+if (!isValidTime(data.scheduledTime)) return "Time must be valid.";
+
+if (
+  ukDateToComparableNumber(data.scheduledDate) === ukDateToComparableNumber(todayUk())
+) {
+  const selectedMinutes = timeStringToMinutes(data.scheduledTime);
+  const currentMinutes = getCurrentUkTimeMinutes();
+
+  if (selectedMinutes < currentMinutes) {
+    return "Time cannot be earlier than the current time for today's date.";
+  }
+}
 
 if (!data.scheduledTime) return "Time is required.";
       
