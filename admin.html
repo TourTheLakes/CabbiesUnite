@@ -1140,6 +1140,14 @@ const firebaseConfig = {
     const manualBookingMessage = document.getElementById("manualBookingMessage");
     const resetManualBookingBtn = document.getElementById("resetManualBookingBtn");
 
+    function getTodayIsoDate() {
+     const now = new Date();
+     const year = now.getFullYear();
+     const month = String(now.getMonth() + 1).padStart(2, "0");
+     const day = String(now.getDate()).padStart(2, "0");
+     return `${year}-${month}-${day}`;
+         }
+
     let manualBookingMessageTimer = null;
 
     const manualQuotePanel = document.getElementById("manualQuotePanel");
@@ -2367,9 +2375,16 @@ function getManualBookingFormData() {
   if (!data.customerPhone) return "Contact number is required.";
   if (!data.pickupAddress) return "Pickup address is required.";
   if (!data.dropoffAddress) return "Dropoff address is required.";
+      
   if (!data.scheduledDate) return "Date is required.";
   if (!isValidUkDate(data.scheduledDate)) return "Date must be in dd/mm/yyyy format.";
-  if (!data.scheduledTime) return "Time is required.";
+
+  if (ukDateToComparableNumber(data.scheduledDate) < ukDateToComparableNumber(todayUk())) {
+    return "Date cannot be before today.";
+  }
+
+if (!data.scheduledTime) return "Time is required.";
+      
   if (!isValidTime(data.scheduledTime)) return "Time must be valid.";
   if (!Number.isFinite(data.passengerCount) || data.passengerCount < 1 || data.passengerCount > 99) {
     return "Passenger count must be valid.";
@@ -2805,6 +2820,8 @@ refreshDriversBtn.addEventListener("click", loadDrivers);
 driversList.addEventListener("click", handleDriverListClick);
 
 jobSearchPhone.addEventListener("input", renderJobs);
+
+    document.getElementById("manualScheduledDate").min = getTodayIsoDate();
 
     bindNav();
 
