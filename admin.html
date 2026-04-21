@@ -964,15 +964,27 @@
         <input id="manualDropoffAddress" name="dropoffAddress" type="text" required />
       </div>
 
-      <div class="field">
-        <label for="manualScheduledDate">Date</label>
-        <input id="manualScheduledDate" name="scheduledDate" type="date" required />
-      </div>
+      <div class="field full">
+  <label for="manualIsAsap">Booking type</label>
+  <select id="manualIsAsap" name="isAsap" required>
+    <option value="no">Scheduled</option>
+    <option value="yes">ASAP</option>
+  </select>
+</div>
 
-      <div class="field">
-        <label for="manualScheduledTime">Time</label>
-        <input id="manualScheduledTime" name="scheduledTime" type="time" required />
-      </div>
+<div class="field">
+  <label for="manualScheduledDate">Date</label>
+  <input id="manualScheduledDate" name="scheduledDate" type="date" required />
+</div>
+
+<div class="field">
+  <label for="manualScheduledTime">Time</label>
+  <input id="manualScheduledTime" name="scheduledTime" type="time" required />
+</div>
+
+<div id="manualAsapHelper" class="helper hidden">
+  ASAP bookings stay live for 15 minutes. If no driver accepts within that window, the booking fails automatically.
+</div>
 
       <div class="field">
         <label for="manualPassengerCount">Passengers</label>
@@ -1137,8 +1149,14 @@ const firebaseConfig = {
     const driversList = document.getElementById("driversList");
 
     const manualBookingForm = document.getElementById("manualBookingForm");
-    const manualBookingMessage = document.getElementById("manualBookingMessage");
-    const resetManualBookingBtn = document.getElementById("resetManualBookingBtn");
+const manualBookingMessage = document.getElementById("manualBookingMessage");
+const resetManualBookingBtn = document.getElementById("resetManualBookingBtn");
+const manualIsAsap = document.getElementById("manualIsAsap");
+const manualScheduledDate = document.getElementById("manualScheduledDate");
+const manualScheduledTime = document.getElementById("manualScheduledTime");
+const manualAsapHelper = document.getElementById("manualAsapHelper");
+
+let manualBookingMessageTimer = null;
 
     function getTodayIsoDate() {
      const now = new Date();
@@ -1147,9 +1165,7 @@ const firebaseConfig = {
      const day = String(now.getDate()).padStart(2, "0");
      return `${year}-${month}-${day}`;
          }
-
-    let manualBookingMessageTimer = null;
-
+    
     const manualQuotePanel = document.getElementById("manualQuotePanel");
     const quoteDistance = document.getElementById("quoteDistance");
     const quoteHCPrice = document.getElementById("quoteHCPrice");
@@ -2337,8 +2353,65 @@ function calculatePHPrice(miles, passengers, dateTimeString) {
   return `${day}/${month}/${year}`;
 }
 
+    function getTodayIsoDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentIsoTimeMinutes() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function getCurrentUkTimeMinutes() {
+  const now = new Date();
+  return (now.getHours() * 60) + now.getMinutes();
+}
+
+function timeStringToMinutes(value) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(value || "").trim());
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  return (hours * 60) + minutes;
+}
+
+function syncManualBookingMode() {
+  const isAsap = manualIsAsap?.value === "yes";
+
+  if (!manualScheduledDate || !manualScheduledTime || !manualAsapHelper) return;
+
+  if (isAsap) {
+    manualScheduledDate.value = getTodayIsoDate();
+    manualScheduledTime.value = getCurrentIsoTimeMinutes();
+    manualScheduledDate.disabled = true;
+    manualScheduledTime.disabled = true;
+    manualAsapHelper.classList.remove("hidden");
+  } else {
+    manualScheduledDate.disabled = false;
+    manualScheduledTime.disabled = false;
+    manualAsapHelper.classList.add("hidden");
+  }
+}
+
 function getManualBookingFormData() {
   const formData = new FormData(manualBookingForm);
+
+  const isAsap = String(formData.get("isAsap") || "no").trim() === "yes";
+  const scheduledDateIso = isAsap
+    ? getTodayIsoDate()
+    : String(formData.get("scheduledDate") || "").trim();
+
+  const scheduledTimeValue = isAsap
+    ? getCurrentIsoTimeMinutes()
+    : String(formData.get("scheduledTime") || "").trim();
 
   const luggageSize = String(formData.get("luggageSize") || "none").trim();
 
@@ -2355,12 +2428,13 @@ function getManualBookingFormData() {
     preferredPhone: String(formData.get("preferredPhone") || "").trim(),
     pickupAddress: String(formData.get("pickupAddress") || "").trim(),
     dropoffAddress: String(formData.get("dropoffAddress") || "").trim(),
-    scheduledDate: formatIsoDateToUk(formData.get("scheduledDate")),
-    scheduledTime: String(formData.get("scheduledTime") || "").trim(),
+    scheduledDate: formatIsoDateToUk(scheduledDateIso),
+    scheduledTime: scheduledTimeValue,
     passengerCount: Number(formData.get("passengerCount") || 0),
     petsRequired: String(formData.get("petsRequired") || "no").trim(),
     luggageSize,
     luggageCount,
+    isAsap,
     notes: String(formData.get("notes") || "").trim()
   };
 }
@@ -2390,37 +2464,35 @@ function getManualBookingFormData() {
   if (!data.customerPhone) return "Contact number is required.";
   if (!data.pickupAddress) return "Pickup address is required.";
   if (!data.dropoffAddress) return "Dropoff address is required.";
-      
   if (!data.scheduledDate) return "Date is required.";
-if (!isValidUkDate(data.scheduledDate)) return "Date must be in dd/mm/yyyy format.";
+  if (!isValidUkDate(data.scheduledDate)) return "Date must be in dd/mm/yyyy format.";
 
-if (ukDateToComparableNumber(data.scheduledDate) < ukDateToComparableNumber(todayUk())) {
-  return "Date cannot be before today.";
-}
-
-if (!data.scheduledTime) return "Time is required.";
-if (!isValidTime(data.scheduledTime)) return "Time must be valid.";
-
-if (
-  ukDateToComparableNumber(data.scheduledDate) === ukDateToComparableNumber(todayUk())
-) {
-  const selectedMinutes = timeStringToMinutes(data.scheduledTime);
-  const currentMinutes = getCurrentUkTimeMinutes();
-
-  if (selectedMinutes < currentMinutes) {
-    return "Time cannot be earlier than the current time for today's date.";
+  if (ukDateToComparableNumber(data.scheduledDate) < ukDateToComparableNumber(todayUk())) {
+    return "Date cannot be before today.";
   }
-}
 
-if (!data.scheduledTime) return "Time is required.";
-      
+  if (!data.scheduledTime) return "Time is required.";
   if (!isValidTime(data.scheduledTime)) return "Time must be valid.";
+
+  if (
+    ukDateToComparableNumber(data.scheduledDate) === ukDateToComparableNumber(todayUk())
+  ) {
+    const selectedMinutes = timeStringToMinutes(data.scheduledTime);
+    const currentMinutes = getCurrentUkTimeMinutes();
+
+    if (selectedMinutes < currentMinutes) {
+      return "Time cannot be earlier than the current time for today's date.";
+    }
+  }
+
   if (!Number.isFinite(data.passengerCount) || data.passengerCount < 1 || data.passengerCount > 99) {
     return "Passenger count must be valid.";
   }
-      if (data.phoneConfirmed === "no" && !data.preferredPhone) {
-  return "Enter the preferred contact number.";
-}
+
+  if (data.phoneConfirmed === "no" && !data.preferredPhone) {
+    return "Enter the preferred contact number.";
+  }
+
   return "";
 }
 
@@ -2473,7 +2545,10 @@ if (!data.scheduledTime) return "Time is required.";
     async function createJobDocuments(data, quote) {
   const groupId = generateGroupId();
 
-  const basePayload = {
+  const nowMs = Date.now();
+const asapExpiresAt = data.isAsap ? (nowMs + (15 * 60 * 1000)) : null;
+
+const basePayload = {
   source: "admin",
   customerName: data.customerName,
   customerPhoneOriginal: data.customerPhone,
@@ -2487,6 +2562,11 @@ if (!data.scheduledTime) return "Time is required.";
   scheduledAt: quote.scheduledAt,
   petsRequired: data.petsRequired === "yes",
   notes: data.notes,
+  isAsap: Boolean(data.isAsap),
+  asapRequestedAt: data.isAsap ? nowMs : null,
+  asapExpiresAt,
+  failedAt: null,
+  failedReason: "",
   acceptedByDriverId: "",
   feeCharged: false,
   effectiveFee: calculateDriverFeeFromJobValue(quote.totalPrice),
@@ -2504,7 +2584,7 @@ if (!data.scheduledTime) return "Time is required.";
   lifecycle: [
     buildLifecycleEntry(
       "created",
-      "Booking created by admin in El’Manuel",
+      data.isAsap ? "ASAP booking created by admin in El’Manuel" : "Booking created by admin in El’Manuel",
       normaliseEmail(auth.currentUser?.email)
     )
   ],
@@ -2823,7 +2903,10 @@ resetManualBookingBtn.addEventListener("click", () => {
   document.getElementById("manualPhoneConfirmed").value = "yes";
   document.getElementById("manualPetsRequired").value = "no";
   document.getElementById("manualLuggageSize").value = "none";
+  document.getElementById("manualIsAsap").value = "no";
   document.getElementById("manualScheduledDate").value = "";
+  document.getElementById("manualScheduledTime").value = "";
+  syncManualBookingMode();
   setManualBookingMessage("");
   renderManualQuote(null);
 });
@@ -2836,12 +2919,18 @@ resetManualBookingBtn.addEventListener("click", () => {
   "manualPassengerCount",
   "manualPetsRequired",
   "manualLuggageSize",
+  "manualIsAsap",
 ].forEach((id) => {
   const el = document.getElementById(id);
   if (el) {
     el.addEventListener("change", calculateManualQuote);
     el.addEventListener("blur", calculateManualQuote);
   }
+});
+
+    manualIsAsap.addEventListener("change", () => {
+  syncManualBookingMode();
+  calculateManualQuote();
 });
 
 driverSearch.addEventListener("input", () => renderDrivers(cachedDrivers));
@@ -2851,6 +2940,9 @@ driversList.addEventListener("click", handleDriverListClick);
 jobSearchPhone.addEventListener("input", renderJobs);
 
     document.getElementById("manualScheduledDate").min = getTodayIsoDate();
+
+    manualScheduledDate.min = getTodayIsoDate();
+    syncManualBookingMode();
 
     bindNav();
 
@@ -2966,24 +3058,30 @@ async function loadJobs() {
   });
 
   const activeBookings = [];
-  const completedBookings = [];
-  const cancelledBookings = [];
+const completedBookings = [];
+const cancelledBookings = [];
+const failedBookings = [];
 
   filteredBookings.forEach((booking) => {
-    const status = String(booking.primary.status || "").toLowerCase();
+  const status = String(booking.primary.status || "").toLowerCase();
 
-    if (status === "cancelled") {
-      cancelledBookings.push(booking);
-      return;
-    }
+  if (status === "cancelled") {
+    cancelledBookings.push(booking);
+    return;
+  }
 
-    if (status === "fulfilled" || status === "completed") {
-      completedBookings.push(booking);
-      return;
-    }
+  if (status === "failed") {
+    failedBookings.push(booking);
+    return;
+  }
 
-    activeBookings.push(booking);
-  });
+  if (status === "fulfilled" || status === "completed") {
+    completedBookings.push(booking);
+    return;
+  }
+
+  activeBookings.push(booking);
+});
 
   const driverDisplayMap = {};
 
@@ -3085,12 +3183,12 @@ function buildSection(title, bookings) {
               </div>
 
               <div class="pill-row">
-                <span class="pill">${escapeHtml(feePillLabel)}</span>
-                <span class="pill">${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}</span>
-                <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
-                <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
-              </div>
-            </div>
+  <span class="pill">${escapeHtml(feePillLabel)}</span>
+  <span class="pill">${primary.isAsap ? "ASAP" : `${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}`}</span>
+  <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
+  <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
+  ${primary.isAsap && primary.asapExpiresAt ? `<span class="pill warn">Expires ${escapeHtml(String(primary.asapExpiresAt))}</span>` : ""}
+</div>
 
             <div class="job-toggle">
               <div class="job-row">
@@ -3195,6 +3293,8 @@ function buildSection(title, bookings) {
                   </div>
 
                   <div>Source: ${escapeHtml(primary.source || "-")}</div>
+<div>ASAP: ${primary.isAsap ? "Yes" : "No"}</div>
+<div>Failed reason: ${escapeHtml(primary.failedReason || "-")}</div>
                 </div>
 
                 <div class="job-section">
@@ -3270,10 +3370,11 @@ function buildSection(title, bookings) {
 }
 
   jobsList.innerHTML = `
-    ${buildSection("Active Jobs", activeBookings)}
-    ${buildSection("Completed Jobs", completedBookings)}
-    ${buildSection("Cancelled Jobs", cancelledBookings)}
-  `;
+  ${buildSection("Active Jobs", activeBookings)}
+  ${buildSection("Completed Jobs", completedBookings)}
+  ${buildSection("Cancelled Jobs", cancelledBookings)}
+  ${buildSection("Failed Jobs", failedBookings)}
+`;
 
 [...jobsList.querySelectorAll(".job-card")].forEach((card) => {
   const amendBtn = card.querySelector('[data-job-action="amend"]');
