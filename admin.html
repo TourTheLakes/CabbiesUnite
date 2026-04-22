@@ -1729,16 +1729,16 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     }
 
     vehiclePlan.vehicles = vehiclePlan.vehicles.map((vehicle) => {
-      const vehiclePrice =
-        distanceMiles <= 3
-          ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
-          : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
+  const vehiclePrice =
+    distanceMiles <= 3
+      ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAtIso)
+      : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAtIso);
 
-      return {
-        ...vehicle,
-        price: vehiclePrice
-      };
-    });
+  return {
+    ...vehicle,
+    price: vehiclePrice
+  };
+});
 
     const totalPrice = vehiclePlan.vehicles.reduce((sum, vehicle) => sum + vehicle.price, 0);
 
