@@ -1398,41 +1398,6 @@ function updateClaimCountdownPills() {
   });
 }
 
-function getClaimDeadlineForBooking(primary) {
-  const status = String(primary?.status || "").toLowerCase();
-  if (status !== "pending") return 0;
-
-  if (primary?.isAsap) {
-    return Number(primary.asapExpiresAt || 0);
-  }
-
-  const scheduledAt = Number(primary?.scheduledAt || 0);
-  if (!scheduledAt) return 0;
-
-  const now = Date.now();
-  const countdownStart = scheduledAt - (15 * 60 * 1000);
-
-  if (now < countdownStart) return 0;
-
-  return scheduledAt;
-}
-
-function updateClaimCountdownPills() {
-  const nodes = document.querySelectorAll("[data-claim-deadline-at]");
-
-  nodes.forEach((node) => {
-    const deadlineAt = Number(node.dataset.claimDeadlineAt || 0);
-    const remaining = deadlineAt - Date.now();
-
-    if (remaining <= 0) {
-      node.textContent = "Expired";
-      return;
-    }
-
-    node.textContent = `Expires in ${formatCountdown(remaining)}`;
-  });
-}
-
 function combineUkDateAndTime(dateValue, timeValue) {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(dateValue || "").trim());
   if (!match) return "";
