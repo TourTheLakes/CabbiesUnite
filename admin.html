@@ -3126,9 +3126,58 @@ async function getDriverDisplayName(driverId) {
   }
 }
 
+    async function expireOverduePendingBookings() {
+  const snapshot = await getDocs(query(collection(db, "jobs"), where("status", "==", "pending")));
+
+  const pendingJobs = snapshot.docs.map((docSnap) => ({
+    ...docSnap.data(),
+    id: docSnap.id
+  }));
+
+  const now = Date.now();
+
+  const groups = {};
+
+  pendingJobs.forEach((job) => {
+    const key = job.groupId || job.id;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(job);
+  });
+
+  for (const parts of Object.values(groups)) {
+    const primary = parts[0];
+    const wallExpiresAt = Number(primary.wallExpiresAt || 0);
+
+    if (!wallExpiresAt) continue;
+    if (now < wallExpiresAt) continue;
+
+    for (const part of parts) {
+      const nextLifecycle = Array.isArray(part.lifecycle) ? [...part.lifecycle] : [];
+
+      nextLifecycle.push(
+        buildLifecycleEntry(
+          "failed",
+          "Booking expired on wall before acceptance"
+        )
+      );
+
+      await updateDoc(doc(db, "jobs", part.id), {
+        status: "failed",
+        failedAt: now,
+        failedReason: "Unable to accommodate before expiry",
+        lifecycle: nextLifecycle,
+        updatedAt: serverTimestamp(),
+        lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+      });
+    }
+  }
+}
+
 async function loadJobs() {
   const jobsList = document.getElementById("jobsList");
   jobsList.innerHTML = `<div class="empty-state">Loading jobs...</div>`;
+
+  await expireOverduePendingBookings();
 
   const q = query(collection(db, "jobs"), orderBy("createdAt", "desc"));
   const snapshot = await getDocs(q);
