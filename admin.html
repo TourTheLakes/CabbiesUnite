@@ -580,6 +580,61 @@
   cursor: pointer;
 }
 
+    .job-header {
+  display: grid;
+  grid-template-columns: minmax(220px, auto) 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.job-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.job-title strong {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.job-title span {
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.job-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.job-route {
+  display: grid;
+  gap: 6px;
+}
+
+.job-route-line {
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.job-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+.job-meta-item {
+  color: var(--text);
+  line-height: 1.35;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.job-meta-item-wide {
+  grid-column: 1 / -1;
+}
+
 .job-card.expanded {
   border-color: var(--text);
 }
@@ -665,11 +720,11 @@
 }
 
 .job-header {
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 .job-title {
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 
 .job-toggle {
@@ -710,6 +765,18 @@
 @media (max-width: 860px) {
   .job-section-grid {
     grid-template-columns: 1fr;
+  }
+
+  .job-header {
+    grid-template-columns: 1fr;
+  }
+
+  .job-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .job-meta-item-wide {
+    grid-column: auto;
   }
 }
 
@@ -3157,7 +3224,7 @@ for (const booking of filteredBookings) {
 
     
 
-function buildSection(title, bookings) {
+  function buildSection(title, bookings) {
   if (!bookings.length) {
     return `
       <div class="jobs-section-block">
@@ -3173,13 +3240,17 @@ function buildSection(title, bookings) {
       ${bookings.map(({ groupId, parts, primary, editSeed }) => {
         const total = parts.length;
         const acceptedCount = parts.filter((p) => String(p.status || "").toLowerCase() === "accepted").length;
+        const primaryStatus = String(primary.status || "").toLowerCase();
+        const isFailed = primaryStatus === "failed";
+        const isCancelled = primaryStatus === "cancelled";
+        const isCompleted = ["fulfilled", "completed"].includes(primaryStatus);
 
         let groupStatus = "Pending";
         if (acceptedCount > 0 && acceptedCount < total) groupStatus = "Partially Accepted";
         if (acceptedCount === total && total > 0) groupStatus = "Confirmed";
-
-        if (String(primary.status || "").toLowerCase() === "cancelled") groupStatus = "Cancelled";
-        if (["fulfilled", "completed"].includes(String(primary.status || "").toLowerCase())) groupStatus = "Completed";
+        if (isCancelled) groupStatus = "Cancelled";
+        if (isCompleted) groupStatus = "Completed";
+        if (isFailed) groupStatus = "Failed";
 
         const feeAmount = Number(
           primary.feeOverrideApplied
@@ -3191,6 +3262,17 @@ function buildSection(title, bookings) {
           ? `Override £${feeAmount}`
           : `Fee £${feeAmount}`;
 
+        const driverDisplay =
+          total === 1
+            ? escapeHtml(partDriverDisplayMap[parts[0].id] || "On wall")
+            : escapeHtml(
+                parts.every((part) => String(part.status || "").toLowerCase() === "accepted")
+                  ? "Fully allocated"
+                  : parts.some((part) => String(part.status || "").toLowerCase() === "accepted")
+                    ? "Partially allocated"
+                    : "On wall"
+              );
+
         return `
           <div class="job-card" data-job-group="${escapeHtml(groupId)}">
             <div class="job-header job-toggle">
@@ -3200,51 +3282,39 @@ function buildSection(title, bookings) {
               </div>
 
               <div class="pill-row">
-  <span class="pill">${escapeHtml(feePillLabel)}</span>
-  <span class="pill">${primary.isAsap ? "ASAP" : `${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}`}</span>
-  <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
-  <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
-  ${
-    primary.isAsap && primary.asapExpiresAt
-      ? `<span class="pill warn" data-asap-expires-at="${Number(primary.asapExpiresAt)}">Expires in --:--</span>`
-      : ""
-  }
-</div>
+                <span class="pill ${isFailed ? "danger" : ""}">${escapeHtml(feePillLabel)}</span>
+                <span class="pill ${primary.isAsap ? "warn" : ""}">
+                  ${primary.isAsap ? "ASAP" : `${escapeHtml(primary.scheduledDate || "-")} ${escapeHtml(primary.scheduledTime || "-")}`}
+                </span>
+                <span class="pill">${total} Part${total > 1 ? "s" : ""}</span>
+                <span class="pill">Live £${Number(primary.liveQuotedPrice || 0).toFixed(2)}</span>
+                ${
+                  primary.isAsap && primary.asapExpiresAt && !isFailed
+                    ? `<span class="pill warn" data-asap-expires-at="${Number(primary.asapExpiresAt)}">Expires in --:--</span>`
+                    : ""
+                }
+                ${
+                  isFailed
+                    ? `<span class="pill danger">FAILED</span>`
+                    : ""
+                }
+              </div>
+            </div>
 
-            <div class="job-toggle">
-              <div class="job-row">
-                <span>${escapeHtml(primary.pickupAddress || "")}</span>
+            <div class="job-summary job-toggle">
+              <div class="job-route">
+                <div class="job-route-line">${escapeHtml(primary.pickupAddress || "")}</div>
+                <div class="job-route-line">${escapeHtml(primary.dropoffAddress || "")}</div>
               </div>
 
-              <div class="job-row">
-                <span>${escapeHtml(primary.dropoffAddress || "")}</span>
-              </div>
-
-              <div class="job-row">
-                <span>${Number(primary.passengerCount || 0)} passengers</span>
-                <span>${escapeHtml(primary.luggageSize || "none")}</span>
-                <span>${primary.petsRequired ? "Pets" : "No pets"}</span>
-              </div>
-
-              <div class="job-row">
-                <span>HC £${Number(primary.hcPrice || 0).toFixed(2)}</span>
-                <span>PH £${Number(primary.phPrice || 0).toFixed(2)}</span>
-                <span></span>
-              </div>
-
-              <div class="job-row">
-                <span>Driver: ${
-                    total === 1
-                     ? escapeHtml(partDriverDisplayMap[parts[0].id] || "On wall")
-                      : escapeHtml(
-                         parts.every((part) => String(part.status || "").toLowerCase() === "accepted")
-                     ? "Fully allocated"
-                      : parts.some((part) => String(part.status || "").toLowerCase() === "accepted")
-                       ? "Partially allocated"
-                     : "On wall"
-                      )
-                    }</span>
-                <span>Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</span>
+              <div class="job-meta-grid">
+                <div class="job-meta-item">${Number(primary.passengerCount || 0)} passengers</div>
+                <div class="job-meta-item">${escapeHtml(primary.luggageSize || "none")}</div>
+                <div class="job-meta-item">${primary.petsRequired ? "Pets" : "No pets"}</div>
+                <div class="job-meta-item">HC £${Number(primary.hcPrice || 0).toFixed(2)}</div>
+                <div class="job-meta-item">PH £${Number(primary.phPrice || 0).toFixed(2)}</div>
+                <div class="job-meta-item">Driver: ${driverDisplay}</div>
+                <div class="job-meta-item job-meta-item-wide">Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</div>
               </div>
             </div>
 
@@ -3314,8 +3384,8 @@ function buildSection(title, bookings) {
                   </div>
 
                   <div>Source: ${escapeHtml(primary.source || "-")}</div>
-<div>ASAP: ${primary.isAsap ? "Yes" : "No"}</div>
-<div>Failed reason: ${escapeHtml(primary.failedReason || "-")}</div>
+                  <div>ASAP: ${primary.isAsap ? "Yes" : "No"}</div>
+                  <div>Failed reason: ${escapeHtml(primary.failedReason || "-")}</div>
                 </div>
 
                 <div class="job-section">
@@ -3358,7 +3428,7 @@ function buildSection(title, bookings) {
                         <span>Vehicle price: £${Number(part.vehiclePrice || 0).toFixed(2)}</span>
                       </div>
                       <div class="job-row">
-                       <span>Accepted by: ${escapeHtml(partDriverDisplayMap[part.id] || "On wall")}</span>
+                        <span>Accepted by: ${escapeHtml(partDriverDisplayMap[part.id] || "On wall")}</span>
                       </div>
                     </div>
                   `).join("")}
