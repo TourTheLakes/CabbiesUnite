@@ -1367,19 +1367,7 @@ function getClaimDeadlineForBooking(primary) {
   const status = String(primary?.status || "").toLowerCase();
   if (status !== "pending") return 0;
 
-  if (primary?.isAsap) {
-    return Number(primary.asapExpiresAt || 0);
-  }
-
-  const scheduledAt = Number(primary?.scheduledAt || 0);
-  if (!scheduledAt) return 0;
-
-  const now = Date.now();
-  const countdownStart = scheduledAt - (15 * 60 * 1000);
-
-  if (now < countdownStart) return 0;
-
-  return scheduledAt;
+  return Number(primary?.wallExpiresAt || 0);
 }
 
 function updateClaimCountdownPills() {
@@ -1407,6 +1395,14 @@ function combineUkDateAndTime(dateValue, timeValue) {
   const year = match[3];
 
   return `${year}-${month}-${day}T${timeValue}:00`;
+}
+
+    function getWallExpiresAt(isAsap, scheduledAtMs, createdAtMs) {
+  if (isAsap) {
+    return createdAtMs + (15 * 60 * 1000);
+  }
+
+  return scheduledAtMs - (15 * 60 * 1000);
 }
 
     async function getDrivingDistanceMiles(origin, destination) {
@@ -1702,10 +1698,11 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
   try {
     const rawMiles = await getDrivingDistanceMiles(data.pickupAddress, data.dropoffAddress);
     const distanceMiles = applyDistanceBuffer(rawMiles);
-    const scheduledAt = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
+    const scheduledAtIso = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
+    const scheduledAtMs = new Date(scheduledAtIso).getTime();
 
-    const hcPrice = calculateHCPrice(distanceMiles, data.passengerCount, scheduledAt);
-    const phPrice = calculatePHPrice(distanceMiles, data.passengerCount, scheduledAt);
+    const hcPrice = calculateHCPrice(distanceMiles, data.passengerCount, scheduledAtIso);
+    const phPrice = calculatePHPrice(distanceMiles, data.passengerCount, scheduledAtIso);
     const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
 
     const activeFleet = getActiveFleet(cachedDrivers);
@@ -1746,16 +1743,17 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     const totalPrice = vehiclePlan.vehicles.reduce((sum, vehicle) => sum + vehicle.price, 0);
 
     const quote = {
-      distanceMiles,
-      hcPrice,
-      phPrice,
-      liveQuotedPrice,
-      vehiclePlan,
-      totalPrice: Number(totalPrice.toFixed(2)),
-      quotedPriceInitial: liveQuotedPrice,
-      quotedPriceCurrent: liveQuotedPrice,
-      scheduledAt
-    };
+  distanceMiles,
+  hcPrice,
+  phPrice,
+  liveQuotedPrice,
+  vehiclePlan,
+  totalPrice: Number(totalPrice.toFixed(2)),
+  quotedPriceInitial: liveQuotedPrice,
+  quotedPriceCurrent: liveQuotedPrice,
+  scheduledAtIso,
+  scheduledAtMs
+};
 
     renderManualQuote(quote);
     return quote;
@@ -1876,7 +1874,8 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     async function rebuildBookingGroupFromTotals(booking, updated) {
   const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
   const distanceMiles = applyDistanceBuffer(rawMiles);
-  const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+  const scheduledAtIso = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
+  const scheduledAtMs = new Date(scheduledAtIso).getTime();
 
   const activeFleet = getActiveFleet(cachedDrivers);
 
@@ -2647,7 +2646,9 @@ function getManualBookingFormData() {
   const groupId = generateGroupId();
 
   const nowMs = Date.now();
-const asapExpiresAt = data.isAsap ? (nowMs + (15 * 60 * 1000)) : null;
+  const scheduledAtMs = Number(quote.scheduledAtMs || 0);
+  const wallExpiresAt = getWallExpiresAt(data.isAsap, scheduledAtMs, nowMs);
+  const asapExpiresAt = data.isAsap ? wallExpiresAt : null;
 
 const basePayload = {
   source: "admin",
@@ -2660,14 +2661,16 @@ const basePayload = {
   dropoffAddress: data.dropoffAddress,
   scheduledDate: data.scheduledDate,
   scheduledTime: data.scheduledTime,
-  scheduledAt: quote.scheduledAt,
-  petsRequired: data.petsRequired === "yes",
-  notes: data.notes,
-  isAsap: Boolean(data.isAsap),
-  asapRequestedAt: data.isAsap ? nowMs : null,
-  asapExpiresAt,
-  failedAt: null,
-  failedReason: "",
+  scheduledAt: scheduledAtMs,
+scheduledAtIso: quote.scheduledAtIso,
+petsRequired: data.petsRequired === "yes",
+notes: data.notes,
+isAsap: Boolean(data.isAsap),
+asapRequestedAt: data.isAsap ? nowMs : null,
+asapExpiresAt,
+wallExpiresAt,
+failedAt: null,
+failedReason: "",
   acceptedByDriverId: "",
   feeCharged: false,
   effectiveFee: calculateDriverFeeFromJobValue(quote.totalPrice),
@@ -2731,6 +2734,22 @@ const basePayload = {
     if (!quote) {
       setManualBookingMessage("Unable to calculate a valid quote for this booking.", "error");
       return;
+    }
+
+    if (!data.isAsap) {
+      const wallExpiresAt = getWallExpiresAt(
+        false,
+        Number(quote.scheduledAtMs || 0),
+        Date.now()
+      );
+
+      if (wallExpiresAt <= Date.now()) {
+        setManualBookingMessage(
+          "This scheduled booking is already inside the final 15 minutes and cannot be placed on the wall.",
+          "error"
+        );
+        return;
+      }
     }
 
     await createJobDocuments(data, quote);
