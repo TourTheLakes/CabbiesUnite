@@ -1764,7 +1764,7 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
   }
 }
 
-    async function recalculateSinglePartBookingUpdate(primary, updated) {
+  async function recalculateSinglePartBookingUpdate(primary, updated) {
   const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
   const distanceMiles = applyDistanceBuffer(rawMiles);
   const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
@@ -1797,6 +1797,19 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
       ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
       : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
 
+  const isShortJob = distanceMiles <= 3;
+
+  let phOnlyUntil = 0;
+
+  if (isShortJob) {
+    if (updated.isAsap) {
+      phOnlyUntil = Date.now() + (5 * 60 * 1000);
+    } else {
+      const wallExpiresAt = getWallExpiresAt(false, new Date(scheduledAt).getTime(), Date.now());
+      phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
+    }
+  }
+
   return {
     scheduledAt,
     distanceMiles: Number(distanceMiles.toFixed(2)),
@@ -1812,12 +1825,12 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     compound: false,
     totalParts: 1,
     partIndex: 1,
-    isShortJob: distanceMiles <= 3,
-    phOnlyUntil: distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null
+    isShortJob: isShortJob,
+    phOnlyUntil: phOnlyUntil
   };
 }
 
-    async function expandBookingToCompound(primary, updated) {
+  async function expandBookingToCompound(primary, updated) {
   const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
   const distanceMiles = applyDistanceBuffer(rawMiles);
   const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
@@ -1856,6 +1869,19 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     };
   });
 
+  const isShortJob = distanceMiles <= 3;
+
+  let phOnlyUntil = 0;
+
+  if (isShortJob) {
+    if (updated.isAsap) {
+      phOnlyUntil = Date.now() + (5 * 60 * 1000);
+    } else {
+      const wallExpiresAt = getWallExpiresAt(false, new Date(scheduledAt).getTime(), Date.now());
+      phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
+    }
+  }
+
   return {
     scheduledAt,
     distanceMiles: Number(distanceMiles.toFixed(2)),
@@ -1863,18 +1889,18 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     phPrice: Number(phPrice.toFixed(2)),
     liveQuotedPrice: Number(liveQuotedPrice.toFixed(2)),
     quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
-    totalPrice: parts.reduce((sum, p) => sum + p.vehiclePrice, 0),
-    isShortJob: distanceMiles <= 3,
-    phOnlyUntil: distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
+    totalPrice: Number(parts.reduce((sum, p) => sum + p.vehiclePrice, 0).toFixed(2)),
+    isShortJob: isShortJob,
+    phOnlyUntil: phOnlyUntil,
     compound: true,
     parts
   };
 }
 
-    async function rebuildBookingGroupFromTotals(booking, updated) {
+  async function rebuildBookingGroupFromTotals(booking, updated) {
   const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
   const distanceMiles = applyDistanceBuffer(rawMiles);
-  const scheduledAtIso = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
+  const scheduledAtIso = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
   const scheduledAtMs = new Date(scheduledAtIso).getTime();
 
   const activeFleet = getActiveFleet(cachedDrivers);
@@ -1890,15 +1916,15 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     throw new Error("No active vehicle combination can fulfil this amended booking.");
   }
 
-  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
-  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAtIso);
+  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAtIso);
   const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
 
   const parts = plan.vehicles.map((vehicle, index) => {
     const vehiclePrice =
       distanceMiles <= 3
-        ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
-        : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
+        ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAtIso)
+        : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAtIso);
 
     return {
       partIndex: index + 1,
@@ -1912,8 +1938,21 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     };
   });
 
+  const isShortJob = distanceMiles <= 3;
+
+  let phOnlyUntil = 0;
+
+  if (isShortJob) {
+    if (updated.isAsap) {
+      phOnlyUntil = Date.now() + (5 * 60 * 1000);
+    } else {
+      const wallExpiresAt = getWallExpiresAt(false, scheduledAtMs, Date.now());
+      phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
+    }
+  }
+
   return {
-    scheduledAt,
+    scheduledAt: scheduledAtMs,
     distanceMiles: Number(distanceMiles.toFixed(2)),
     hcPrice: Number(hcPrice.toFixed(2)),
     phPrice: Number(phPrice.toFixed(2)),
@@ -1921,8 +1960,8 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     quotedPriceInitial: Number(liveQuotedPrice.toFixed(2)),
     quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
     totalPrice: Number(parts.reduce((sum, p) => sum + p.vehiclePrice, 0).toFixed(2)),
-    isShortJob: distanceMiles <= 3,
-    phOnlyUntil: distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
+    isShortJob: isShortJob,
+    phOnlyUntil: phOnlyUntil,
     compound: parts.length > 1,
     parts
   };
@@ -2646,9 +2685,35 @@ function getManualBookingFormData() {
   const groupId = generateGroupId();
 
   const nowMs = Date.now();
-  const scheduledAtMs = Number(quote.scheduledAtMs || 0);
-  const wallExpiresAt = getWallExpiresAt(data.isAsap, scheduledAtMs, nowMs);
-  const asapExpiresAt = data.isAsap ? wallExpiresAt : null;
+const scheduledAtMs = Number(quote.scheduledAtMs || 0);
+const wallExpiresAt = getWallExpiresAt(data.isAsap, scheduledAtMs, nowMs);
+const asapExpiresAt = data.isAsap ? wallExpiresAt : null;
+
+let phOnlyUntil = 0;
+
+const isShortJob = quote.distanceMiles <= 3;
+
+if (isShortJob) {
+  if (data.isAsap) {
+    // ASAP → PH gets first 5 mins
+    phOnlyUntil = nowMs + (5 * 60 * 1000);
+  } else {
+    // Scheduled → PH until last 10 mins
+    phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
+  }
+}
+
+const isShortJob = quote.distanceMiles <= 3;
+
+let phOnlyUntil = 0;
+
+if (isShortJob) {
+  if (data.isAsap) {
+    phOnlyUntil = nowMs + (5 * 60 * 1000);
+  } else {
+    phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
+  }
+}
 
 const basePayload = {
   source: "admin",
@@ -2662,36 +2727,48 @@ const basePayload = {
   scheduledDate: data.scheduledDate,
   scheduledTime: data.scheduledTime,
   scheduledAt: scheduledAtMs,
-scheduledAtIso: quote.scheduledAtIso,
-petsRequired: data.petsRequired === "yes",
-notes: data.notes,
-isAsap: Boolean(data.isAsap),
-asapRequestedAt: data.isAsap ? nowMs : null,
-asapExpiresAt,
-wallExpiresAt,
-failedAt: null,
-failedReason: "",
+  scheduledAtIso: quote.scheduledAtIso,
+  petsRequired: data.petsRequired === "yes",
+  notes: data.notes,
+
+  isAsap: Boolean(data.isAsap),
+  asapRequestedAt: data.isAsap ? nowMs : null,
+  asapExpiresAt: asapExpiresAt,
+
+  phOnlyUntil: phOnlyUntil,
+  wallExpiresAt: wallExpiresAt,
+
+  failedAt: null,
+  failedReason: "",
+
   acceptedByDriverId: "",
   feeCharged: false,
   effectiveFee: calculateDriverFeeFromJobValue(quote.totalPrice),
+
   status: "pending",
+
   quotedPriceInitial: quote.quotedPriceInitial,
   quotedPriceCurrent: quote.quotedPriceCurrent,
   hcPrice: quote.hcPrice,
   phPrice: quote.phPrice,
   liveQuotedPrice: quote.liveQuotedPrice,
+
   distanceMiles: Number(quote.distanceMiles.toFixed(2)),
-  isShortJob: quote.distanceMiles <= 3,
-  phOnlyUntil: quote.distanceMiles <= 3 ? Date.now() + (5 * 60 * 1000) : null,
+  isShortJob: isShortJob,
+
   compound: quote.vehiclePlan.vehicles.length > 1,
   totalPrice: quote.totalPrice,
+
   lifecycle: [
     buildLifecycleEntry(
       "created",
-      data.isAsap ? "ASAP booking created by admin in El’Manuel" : "Booking created by admin in El’Manuel",
+      data.isAsap
+        ? "ASAP booking created by admin in El’Manuel"
+        : "Booking created by admin in El’Manuel",
       normaliseEmail(auth.currentUser?.email)
     )
   ],
+
   createdAt: serverTimestamp(),
   updatedAt: serverTimestamp(),
   createdBy: normaliseEmail(auth.currentUser?.email),
