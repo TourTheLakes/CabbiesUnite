@@ -3941,26 +3941,7 @@ batch.set(doc(db, "jobs", survivor.id), {
 
     await batch.commit();
 
-    const verifySnapshot = await getDocs(
-  query(collection(db, "jobs"), where("groupId", "==", primary.groupId))
-);
-
-const verifyParts = verifySnapshot.docs
-  .map((docSnap) => ({
-    ...docSnap.data(),
-    id: docSnap.id
-  }))
-  .sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
-
-console.log("AMEND VERIFY", {
-  groupId: primary.groupId,
-  scheduledDate: verifyParts[0]?.scheduledDate,
-  scheduledTime: verifyParts[0]?.scheduledTime,
-  scheduledAt: verifyParts[0]?.scheduledAt,
-  wallExpiresAt: verifyParts[0]?.wallExpiresAt
-});
-
-await loadJobs();
+    await loadJobs();
 editMode = false;
 return;
 
