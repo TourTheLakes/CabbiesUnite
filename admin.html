@@ -1504,18 +1504,6 @@ function getFleetCountByCapacity(drivers) {
 
   return counts;
 }
-      
-      function splitPassengersEvenly(passengers, vehicles) {
-  const base = Math.floor(passengers / vehicles);
-  const remainder = passengers % vehicles;
-  const result = [];
-
-  for (let i = 0; i < vehicles; i++) {
-    result.push(base + (i < remainder ? 1 : 0));
-  }
-
-  return result;
-}
 
 function allocateLuggageEvenly(luggageCount, vehicles) {
   const base = Math.floor(luggageCount / vehicles);
