@@ -1282,12 +1282,25 @@ let manualBookingMessageTimer = null;
   }
 
   if (text && type === "success") {
-    manualBookingMessageTimer = setTimeout(() => {
-      manualBookingMessage.textContent = "";
-      manualBookingMessage.className = "message";
-      manualBookingMessageTimer = null;
-    }, 3000);
-  }
+  manualBookingMessageTimer = setTimeout(() => {
+    manualBookingMessage.textContent = "";
+    manualBookingMessage.className = "message";
+    manualBookingMessageTimer = null;
+
+    manualBookingForm.reset();
+
+    document.getElementById("manualPhoneConfirmed").value = "yes";
+    document.getElementById("manualPetsRequired").value = "no";
+    document.getElementById("manualLuggageSize").value = "none";
+    document.getElementById("manualIsAsap").value = "no";
+    document.getElementById("manualScheduledDate").value = "";
+    document.getElementById("manualScheduledTime").value = "";
+
+    syncManualBookingMode();
+    renderManualQuote(null);
+
+  }, 3000);
+ }
 }
 
 function todayUk() {
