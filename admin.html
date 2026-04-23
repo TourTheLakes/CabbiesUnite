@@ -2795,17 +2795,6 @@ const basePayload = {
   for (let i = 0; i < quote.vehiclePlan.vehicles.length; i++) {
   const vehicle = quote.vehiclePlan.vehicles[i];
 
-  console.log("JOB WRITE VEHICLE", {
-    groupId,
-    partIndex: i + 1,
-    totalParts: quote.vehiclePlan.vehicles.length,
-    formPassengerCount: data.passengerCount,
-    vehiclePassengers: vehicle.passengers,
-    luggageSize: vehicle.luggageSize,
-    luggageCount: vehicle.luggageCount,
-    requiredSeats: vehicle.capacity
-  });
-
   await addDoc(collection(db, "jobs"), {
     ...basePayload,
     groupId,
