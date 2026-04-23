@@ -3839,7 +3839,24 @@ const showClaimCountdown =
     const survivor = freshParts[0];
     const batch = writeBatch(db);
 
-    const baseGroupPayload = {
+    const amendedScheduledAtIso = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+const amendedScheduledAtMs = new Date(amendedScheduledAtIso).getTime();
+
+const amendedIsAsap = Boolean(primary.isAsap);
+const amendedWallExpiresAt = getWallExpiresAt(amendedIsAsap, amendedScheduledAtMs, Date.now());
+const amendedAsapExpiresAt = amendedIsAsap ? amendedWallExpiresAt : null;
+
+let amendedPhOnlyUntil = 0;
+
+if (rebuilt.isShortJob) {
+  if (amendedIsAsap) {
+    amendedPhOnlyUntil = Date.now() + (5 * 60 * 1000);
+  } else {
+    amendedPhOnlyUntil = amendedWallExpiresAt - (10 * 60 * 1000);
+  }
+}
+
+const baseGroupPayload = {
   customerName: updated.customerName,
   customerPhonePreferred: updated.customerPhonePreferred,
   notes: updated.notes,
@@ -3847,8 +3864,8 @@ const showClaimCountdown =
   dropoffAddress: updated.dropoffAddress,
   scheduledDate: updated.scheduledDate,
   scheduledTime: updated.scheduledTime,
-  scheduledAt: rebuilt.scheduledAt,
-  scheduledAtIso: rebuilt.scheduledAtIso,
+  scheduledAt: amendedScheduledAtMs,
+  scheduledAtIso: amendedScheduledAtIso,
   passengerCount: updated.passengerCount,
   petsRequired: updated.petsRequired,
   luggageSize: updated.luggageSize,
@@ -3860,16 +3877,18 @@ const showClaimCountdown =
   quotedPriceInitial: rebuilt.quotedPriceInitial,
   quotedPriceCurrent: rebuilt.quotedPriceCurrent,
   totalPrice: rebuilt.totalPrice,
-  isAsap: rebuilt.isAsap,
-  asapExpiresAt: rebuilt.asapExpiresAt,
-  wallExpiresAt: rebuilt.wallExpiresAt,
+  isAsap: amendedIsAsap,
+  asapExpiresAt: amendedAsapExpiresAt,
+  wallExpiresAt: amendedWallExpiresAt,
   isShortJob: rebuilt.isShortJob,
-  phOnlyUntil: rebuilt.phOnlyUntil,
+  phOnlyUntil: amendedPhOnlyUntil,
   compound: rebuilt.parts.length > 1,
   totalParts: rebuilt.parts.length,
   acceptedByDriverId: "",
   status: "pending",
   feeCharged: false,
+  failedAt: null,
+  failedReason: "",
   updatedAt: serverTimestamp(),
   lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
 };
@@ -3932,10 +3951,18 @@ const verifyParts = verifySnapshot.docs
     id: docSnap.id
   }))
   .sort((a, b) => Number(a.partIndex || 1) - Number(b.partIndex || 1));
-    
-    await loadJobs();
-    editMode = false;
-    return;
+
+console.log("AMEND VERIFY", {
+  groupId: primary.groupId,
+  scheduledDate: verifyParts[0]?.scheduledDate,
+  scheduledTime: verifyParts[0]?.scheduledTime,
+  scheduledAt: verifyParts[0]?.scheduledAt,
+  wallExpiresAt: verifyParts[0]?.wallExpiresAt
+});
+
+await loadJobs();
+editMode = false;
+return;
 
   } catch (err) {
     window.alert(err.message || "Failed to recalculate amended booking.");
