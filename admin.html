@@ -1964,19 +1964,23 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
 
   const isShortJob = distanceMiles <= 3;
 
+  const isAsap = Boolean(updated.isAsap);
+  const wallExpiresAt = getWallExpiresAt(isAsap, scheduledAtMs, Date.now());
+  const asapExpiresAt = isAsap ? wallExpiresAt : null;
+
   let phOnlyUntil = 0;
 
   if (isShortJob) {
-    if (updated.isAsap) {
+    if (isAsap) {
       phOnlyUntil = Date.now() + (5 * 60 * 1000);
     } else {
-      const wallExpiresAt = getWallExpiresAt(false, scheduledAtMs, Date.now());
       phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
     }
   }
 
   return {
     scheduledAt: scheduledAtMs,
+    scheduledAtIso: scheduledAtIso,
     distanceMiles: Number(distanceMiles.toFixed(2)),
     hcPrice: Number(hcPrice.toFixed(2)),
     phPrice: Number(phPrice.toFixed(2)),
@@ -1985,6 +1989,9 @@ function allocateLuggageEvenly(luggageCount, vehicles) {
     quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
     totalPrice: Number(parts.reduce((sum, p) => sum + p.vehiclePrice, 0).toFixed(2)),
     isShortJob: isShortJob,
+    isAsap: isAsap,
+    asapExpiresAt: asapExpiresAt,
+    wallExpiresAt: wallExpiresAt,
     phOnlyUntil: phOnlyUntil,
     compound: parts.length > 1,
     parts
