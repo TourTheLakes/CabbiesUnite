@@ -2793,21 +2793,32 @@ const basePayload = {
 };
 
   for (let i = 0; i < quote.vehiclePlan.vehicles.length; i++) {
-    const vehicle = quote.vehiclePlan.vehicles[i];
+  const vehicle = quote.vehiclePlan.vehicles[i];
 
-    await addDoc(collection(db, "jobs"), {
-      ...basePayload,
-      groupId,
-      partIndex: i + 1,
-      totalParts: quote.vehiclePlan.vehicles.length,
-      passengerCount: vehicle.passengers,
-      luggageSize: vehicle.luggageSize,
-      luggageCount: vehicle.luggageCount,
-      requiredSeats: vehicle.capacity,
-      vehiclePrice: vehicle.price,
-      effectiveFee: calculateDriverFeeFromJobValue(vehicle.price),
-    });
-  }
+  console.log("JOB WRITE VEHICLE", {
+    groupId,
+    partIndex: i + 1,
+    totalParts: quote.vehiclePlan.vehicles.length,
+    formPassengerCount: data.passengerCount,
+    vehiclePassengers: vehicle.passengers,
+    luggageSize: vehicle.luggageSize,
+    luggageCount: vehicle.luggageCount,
+    requiredSeats: vehicle.capacity
+  });
+
+  await addDoc(collection(db, "jobs"), {
+    ...basePayload,
+    groupId,
+    partIndex: i + 1,
+    totalParts: quote.vehiclePlan.vehicles.length,
+    passengerCount: vehicle.passengers,
+    luggageSize: vehicle.luggageSize,
+    luggageCount: vehicle.luggageCount,
+    requiredSeats: vehicle.capacity,
+    vehiclePrice: vehicle.price,
+    effectiveFee: calculateDriverFeeFromJobValue(vehicle.price),
+  });
+}
 }
 
     async function handleManualBookingSubmit(event) {
@@ -2815,6 +2826,7 @@ const basePayload = {
   setManualBookingMessage("");
 
   const data = getManualBookingFormData();
+      console.log("MANUAL SUBMIT DATA", data);
   const validationError = validateManualBookingData(data);
 
   if (validationError) {
