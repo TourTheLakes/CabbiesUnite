@@ -2689,20 +2689,6 @@ const scheduledAtMs = Number(quote.scheduledAtMs || 0);
 const wallExpiresAt = getWallExpiresAt(data.isAsap, scheduledAtMs, nowMs);
 const asapExpiresAt = data.isAsap ? wallExpiresAt : null;
 
-let phOnlyUntil = 0;
-
-const isShortJob = quote.distanceMiles <= 3;
-
-if (isShortJob) {
-  if (data.isAsap) {
-    // ASAP → PH gets first 5 mins
-    phOnlyUntil = nowMs + (5 * 60 * 1000);
-  } else {
-    // Scheduled → PH until last 10 mins
-    phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
-  }
-}
-
 const isShortJob = quote.distanceMiles <= 3;
 
 let phOnlyUntil = 0;
