@@ -2319,6 +2319,78 @@ function driverAcceptsPets(claim) {
   return String(claim.petsAccepted || "").trim().toLowerCase() === "yes";
 }
 
+   function getJobStartMs(job) {
+  const scheduledAt = Number(job.scheduledAt || 0);
+
+  if (scheduledAt > 0) {
+    return scheduledAt;
+  }
+
+  if (job.scheduledAtIso) {
+    const parsed = new Date(job.scheduledAtIso).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function isSameBookingGroup(a, b) {
+  const aGroup = String(a.groupId || a.id || "").trim();
+  const bGroup = String(b.groupId || b.id || "").trim();
+
+  return aGroup && bGroup && aGroup === bGroup;
+}
+
+function getDriverAcceptedJobsFromParts(driverId, allParts, currentGroupId) {
+  const cleanDriverId = String(driverId || "").trim();
+  const cleanCurrentGroupId = String(currentGroupId || "").trim();
+
+  if (!cleanDriverId) return [];
+
+  return allParts.filter((part) => {
+    const acceptedBy = String(part.acceptedByDriverId || "").trim();
+    const groupId = String(part.groupId || "").trim();
+    const status = String(part.status || "").trim().toLowerCase();
+
+    if (acceptedBy !== cleanDriverId) return false;
+    if (status !== "accepted") return false;
+    if (cleanCurrentGroupId && groupId === cleanCurrentGroupId) return false;
+
+    return true;
+  });
+}
+
+function hasAdminDiaryTimeConflict(candidatePart, driverAcceptedJobs) {
+  const candidateStart = getJobStartMs(candidatePart);
+  if (candidateStart <= 0) {
+    return {
+      conflict: false,
+      reason: ""
+    };
+  }
+
+  const conflictWindowMs = 2 * 60 * 60 * 1000;
+
+  for (const existing of driverAcceptedJobs) {
+    const existingStart = getJobStartMs(existing);
+    if (existingStart <= 0) continue;
+
+    const gapMs = Math.abs(existingStart - candidateStart);
+
+    if (gapMs <= conflictWindowMs) {
+      return {
+        conflict: true,
+        reason: `Driver already has a diary booking within 2 hours: ${existing.scheduledDate || ""} ${existing.scheduledTime || ""}`.trim()
+      };
+    }
+  }
+
+  return {
+    conflict: false,
+    reason: ""
+  };
+} 
+
 function isClaimCompatibleWithPart(claim, part, bookingIsCompound) {
   const driverCapacity = Number(claim.passengerCapacity || 0);
   const partPassengers = Number(part.passengerCount || 0);
