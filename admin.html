@@ -2158,6 +2158,69 @@ function buildAdminFeeOverrideState(primary) {
   };
 }
 
+function getOrderedClaims(parts) {
+  const claims = [];
+
+  parts.forEach((part) => {
+    if (Array.isArray(part.claimChain)) {
+      part.claimChain.forEach((claim) => {
+        claims.push({
+          ...claim,
+          sourceJobId: part.id
+        });
+      });
+    }
+  });
+
+  return claims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
+}
+
+function driverAcceptsPets(claim) {
+  return String(claim.petsAccepted || "").trim().toLowerCase() === "yes";
+}
+
+function isClaimCompatibleWithPart(claim, part, bookingIsCompound) {
+  const driverCapacity = Number(claim.passengerCapacity || 0);
+  const partPassengers = Number(part.passengerCount || 0);
+  const luggageCount = Number(part.luggageCount || 0);
+  const petsRequired = Boolean(part.petsRequired);
+
+  if (driverCapacity < partPassengers) {
+    return {
+      compatible: false,
+      reason: "Booking required more passenger capacity."
+    };
+  }
+
+  if (petsRequired && !driverAcceptsPets(claim)) {
+    return {
+      compatible: false,
+      reason: "Booking now requires pets and this driver does not accept pets."
+    };
+  }
+
+  if (bookingIsCompound) {
+    if (driverCapacity <= 4 && luggageCount >= 4) {
+      return {
+        compatible: false,
+        reason: "Booking luggage now requires a larger vehicle."
+      };
+    }
+
+    if (driverCapacity <= 6 && partPassengers >= 5 && luggageCount >= 3) {
+      return {
+        compatible: false,
+        reason: "Booking luggage and passenger mix now requires a larger vehicle."
+      };
+    }
+  }
+
+  return {
+    compatible: true,
+    reason: ""
+  };
+}
+
 function getBookingDisplayStatus(primary, parts) {
   const status = String(primary.status || "").toLowerCase();
   const total = parts.length;
@@ -3904,6 +3967,49 @@ const showClaimCountdown =
       updated
     );
 
+    const existingClaims = getOrderedClaims(freshParts);
+
+const assignments = [];
+const removedClaims = [];
+const usedPartIndexes = new Set();
+
+for (const claim of existingClaims) {
+  let matchedPart = null;
+
+  for (const part of rebuilt.parts) {
+    if (usedPartIndexes.has(part.partIndex)) continue;
+
+    const compatibility = isClaimCompatibleWithPart(
+      claim,
+      {
+        ...part,
+        luggageCount: rebuilt.luggageCount,
+        petsRequired: rebuilt.petsRequired
+      },
+      rebuilt.compound
+    );
+
+    if (compatibility.compatible) {
+      matchedPart = part;
+      break;
+    }
+  }
+
+  if (matchedPart) {
+    usedPartIndexes.add(matchedPart.partIndex);
+
+    assignments.push({
+      claim,
+      part: matchedPart
+    });
+  } else {
+    removedClaims.push({
+      claim,
+      reason: "Booking no longer compatible after amendment"
+    });
+  }
+}
+
     const groupLifecycleEntry = buildLifecycleEntry(
       "amended",
       "Operational admin amendment",
@@ -3915,110 +4021,74 @@ const showClaimCountdown =
   groupLifecycleEntry
 ];
 
-    const survivor = freshParts[0];
     const batch = writeBatch(db);
 
-    const amendedScheduledAtIso = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
-const amendedScheduledAtMs = new Date(amendedScheduledAtIso).getTime();
+// 1. Assign existing claimed drivers (priority order already handled)
+assignments.forEach(({ claim, part }) => {
+  const ref = doc(db, "jobs", part.id || doc(collection(db, "jobs")).id);
 
-const amendedIsAsap = Boolean(primary.isAsap);
-const amendedWallExpiresAt = getWallExpiresAt(amendedIsAsap, amendedScheduledAtMs, Date.now());
-const amendedAsapExpiresAt = amendedIsAsap ? amendedWallExpiresAt : null;
+  batch.set(ref, {
+    ...baseGroupPayload,
+    ...part,
+    groupId: primary.groupId,
 
-let amendedPhOnlyUntil = 0;
+    acceptedByDriverId: claim.driverId,
+    acceptedDriverName: claim.driverName,
+    acceptedDriverCapacity: claim.passengerCapacity,
+    acceptedDriverPetsAccepted: claim.petsAccepted,
 
-if (rebuilt.isShortJob) {
-  if (amendedIsAsap) {
-    amendedPhOnlyUntil = Date.now() + (5 * 60 * 1000);
-  } else {
-    amendedPhOnlyUntil = amendedWallExpiresAt - (10 * 60 * 1000);
-  }
+    status: "accepted",
+    feeCharged: true,
+
+    updatedAt: serverTimestamp(),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  }, { merge: true });
+});
+
+// 2. Any remaining parts go back to wall
+rebuilt.parts
+  .filter(part => !assignments.find(a => a.part.partIndex === part.partIndex))
+  .forEach((part) => {
+    const ref = doc(collection(db, "jobs"));
+
+    batch.set(ref, {
+      ...baseGroupPayload,
+      ...part,
+      groupId: primary.groupId,
+
+      acceptedByDriverId: "",
+      status: "pending",
+      feeCharged: false,
+
+      createdAt: serverTimestamp(),
+      createdBy: normaliseEmail(auth.currentUser?.email)
+    });
+  });
+
+// 3. Delete all old parts
+freshParts.forEach((p) => {
+  batch.delete(doc(db, "jobs", p.id));
+});
+
+await batch.commit();
+
+    for (const item of removedClaims) {
+  const claim = item.claim;
+
+  await refundDriverFee(
+    claim.driverId,
+    calculateDriverFeeFromJobValue(primary.totalPrice),
+    primary.groupId,
+    item.reason
+  );
+
+  await createDriverNotification(claim.driverId, {
+    type: "job_dethroned",
+    title: "Booking updated",
+    message: item.reason,
+    bookingGroupId: primary.groupId
+  });
 }
-
-const baseGroupPayload = {
-  customerName: updated.customerName,
-  customerPhonePreferred: updated.customerPhonePreferred,
-  notes: updated.notes,
-  pickupAddress: updated.pickupAddress,
-  dropoffAddress: updated.dropoffAddress,
-  scheduledDate: updated.scheduledDate,
-  scheduledTime: updated.scheduledTime,
-  scheduledAt: amendedScheduledAtMs,
-  scheduledAtIso: amendedScheduledAtIso,
-  passengerCount: updated.passengerCount,
-  petsRequired: updated.petsRequired,
-  luggageSize: updated.luggageSize,
-  luggageCount: updated.luggageCount,
-  distanceMiles: rebuilt.distanceMiles,
-  hcPrice: rebuilt.hcPrice,
-  phPrice: rebuilt.phPrice,
-  liveQuotedPrice: rebuilt.liveQuotedPrice,
-  quotedPriceInitial: rebuilt.quotedPriceInitial,
-  quotedPriceCurrent: rebuilt.quotedPriceCurrent,
-  totalPrice: rebuilt.totalPrice,
-  isAsap: amendedIsAsap,
-  asapExpiresAt: amendedAsapExpiresAt,
-  wallExpiresAt: amendedWallExpiresAt,
-  isShortJob: rebuilt.isShortJob,
-  phOnlyUntil: amendedPhOnlyUntil,
-  compound: rebuilt.parts.length > 1,
-  totalParts: rebuilt.parts.length,
-  acceptedByDriverId: "",
-  status: "pending",
-  feeCharged: false,
-  failedAt: null,
-  failedReason: "",
-  updatedAt: serverTimestamp(),
-  lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-};
-
-    const firstPart = rebuilt.parts[0];
-
-    const { id: _survivorId, ...survivorData } = freshParts[0];
-
-batch.set(doc(db, "jobs", survivor.id), {
-  ...survivorData,
-  ...baseGroupPayload,
-  ...firstPart,
-  groupId: primary.groupId,
-  lifecycle: [
-  ...rebuiltLifecycleBase,
-  buildLifecycleEntry(
-    "system",
-    rebuilt.parts.length > 1
-      ? "Rebuilt booking group from amendment"
-      : "Collapsed back to single part from amendment"
-  )
-]
-});
-
-    for (let i = 1; i < rebuilt.parts.length; i++) {
-      const newRef = doc(collection(db, "jobs"));
-      const part = rebuilt.parts[i];
-
-      batch.set(newRef, {
-  ...survivorData,
-  ...baseGroupPayload,
-  ...part,
-  groupId: primary.groupId,
-  createdAt: serverTimestamp(),
-  createdBy: normaliseEmail(auth.currentUser?.email),
-  lifecycle: [
-  ...rebuiltLifecycleBase,
-  buildLifecycleEntry(
-    "system",
-    "Created as compound split from amendment",
-    { partIndex: part.partIndex }
-  )
-]
-});
-    }
-
-    for (let i = 1; i < freshParts.length; i++) {
-      batch.delete(doc(db, "jobs", freshParts[i].id));
-    }
-
-    await batch.commit();
 
     await loadJobs();
 editMode = false;
