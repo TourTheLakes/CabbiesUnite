@@ -4180,30 +4180,68 @@ const showClaimCountdown =
 
     const existingClaims = getOrderedClaims(freshParts);
 
+const acceptedSnapshot = await getDocs(
+  query(collection(db, "jobs"), where("status", "==", "accepted"))
+);
+
+const allAcceptedParts = acceptedSnapshot.docs.map((docSnap) => ({
+  ...docSnap.data(),
+  id: docSnap.id
+}));
+
 const assignments = [];
 const removedClaims = [];
 const usedPartIndexes = new Set();
 
 for (const claim of existingClaims) {
   let matchedPart = null;
+  let removalReason = "Booking no longer compatible after amendment";
+
+  const driverAcceptedJobs = getDriverAcceptedJobsFromParts(
+    claim.driverId,
+    allAcceptedParts,
+    primary.groupId
+  );
 
   for (const part of rebuilt.parts) {
     if (usedPartIndexes.has(part.partIndex)) continue;
 
+    const candidatePart = {
+      ...part,
+      groupId: primary.groupId,
+      scheduledAt: rebuilt.scheduledAt,
+      scheduledAtIso: rebuilt.scheduledAtIso,
+      scheduledDate: updated.scheduledDate,
+      scheduledTime: updated.scheduledTime,
+      pickupAddress: updated.pickupAddress,
+      dropoffAddress: updated.dropoffAddress,
+      luggageCount: rebuilt.luggageCount,
+      petsRequired: rebuilt.petsRequired
+    };
+
     const compatibility = isClaimCompatibleWithPart(
       claim,
-      {
-        ...part,
-        luggageCount: rebuilt.luggageCount,
-        petsRequired: rebuilt.petsRequired
-      },
+      candidatePart,
       rebuilt.compound
     );
 
-    if (compatibility.compatible) {
-      matchedPart = part;
-      break;
+    if (!compatibility.compatible) {
+      removalReason = compatibility.reason || removalReason;
+      continue;
     }
+
+    const diaryCheck = hasAdminDiaryTimeConflict(
+      candidatePart,
+      driverAcceptedJobs
+    );
+
+    if (diaryCheck.conflict) {
+      removalReason = diaryCheck.reason || "Driver already has a conflicting diary booking.";
+      continue;
+    }
+
+    matchedPart = part;
+    break;
   }
 
   if (matchedPart) {
@@ -4216,7 +4254,7 @@ for (const claim of existingClaims) {
   } else {
     removedClaims.push({
       claim,
-      reason: "Booking no longer compatible after amendment"
+      reason: removalReason
     });
   }
 }
