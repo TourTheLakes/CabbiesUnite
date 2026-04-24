@@ -847,8 +847,9 @@
       <nav class="nav-group">
         <button class="nav-btn active" data-section="drivers" type="button">Drivers</button>
         <button class="nav-btn" data-section="jobs" type="button">Jobs</button>
-        <button class="nav-btn" data-section="manual" type="button">El’Manuel</button>
-        <button class="nav-btn" data-section="wallets" type="button">Wallets</button>
+<button class="nav-btn" data-section="manual" type="button">El’Manuel</button>
+<button class="nav-btn" data-section="where" type="button">Where Are You</button>
+<button class="nav-btn" data-section="wallets" type="button">Wallets</button>
         <button class="nav-btn" data-section="penalties" type="button">Penalties</button>
         <button class="nav-btn" data-section="documents" type="button">Documents</button>
         <button class="nav-btn" data-section="settings" type="button">Settings</button>
@@ -1120,6 +1121,17 @@
   </div>
 </section>
 
+      <section id="section-where" class="hidden">
+  <div class="page-header">
+    <h2>Where Are You</h2>
+    <p>Live driver locations from the app.</p>
+  </div>
+
+  <div class="panel">
+    <div id="driverLocationsList" class="drivers-list"></div>
+  </div>
+</section>
+
       <section id="section-wallets" class="hidden">
         <div class="page-header">
           <h2>Wallets</h2>
@@ -1179,6 +1191,12 @@
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
+    import {
+  getDatabase,
+  ref,
+  onValue
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
 const firebaseConfig = {
   apiKey: "AIzaSyDzOY5kRe_NWwdr-Lz4CZlZJlbbqSQAvVE",
   authDomain: "cabbiesunite.firebaseapp.com",
@@ -1193,9 +1211,10 @@ const firebaseConfig = {
     const ALLOWED_ADMIN_EMAIL = "info@neonforge.co.uk";
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    const provider = new GoogleAuthProvider();
+const auth = getAuth(app);
+const db = getFirestore(app);
+const realtimeDb = getDatabase(app);
+const provider = new GoogleAuthProvider();
 
     const loginScreen = document.getElementById("loginScreen");
     const appShell = document.getElementById("appShell");
@@ -1244,14 +1263,15 @@ let manualBookingMessageTimer = null;
 
     const navButtons = [...document.querySelectorAll(".nav-btn")];
     const sections = {
-      drivers: document.getElementById("section-drivers"),
-      jobs: document.getElementById("section-jobs"),
-      manual: document.getElementById("section-manual"),
-      wallets: document.getElementById("section-wallets"),
-      penalties: document.getElementById("section-penalties"),
-      documents: document.getElementById("section-documents"),
-      settings: document.getElementById("section-settings")
-    };
+  drivers: document.getElementById("section-drivers"),
+  jobs: document.getElementById("section-jobs"),
+  manual: document.getElementById("section-manual"),
+  where: document.getElementById("section-where"),
+  wallets: document.getElementById("section-wallets"),
+  penalties: document.getElementById("section-penalties"),
+  documents: document.getElementById("section-documents"),
+  settings: document.getElementById("section-settings")
+};
 
     let cachedDrivers = [];
     let editingDriverId = null;
@@ -2095,6 +2115,95 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
     }
+
+    function formatLocationUpdatedAt(value) {
+  const timestamp = Number(value || 0);
+  if (!timestamp) return "-";
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function renderDriverLocations(locations) {
+  const list = document.getElementById("driverLocationsList");
+  if (!list) return;
+
+  const records = Object.values(locations || {}).sort((a, b) => {
+    return String(a.driverName || "").localeCompare(String(b.driverName || ""));
+  });
+
+  if (!records.length) {
+    list.innerHTML = `<div class="empty-state">No live driver locations yet.</div>`;
+    return;
+  }
+
+  list.innerHTML = records.map((driver) => {
+    const lat = Number(driver.lat || 0);
+    const lng = Number(driver.lng || 0);
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+
+    return `
+      <article class="driver-card" style="min-height:auto;height:auto;">
+        <div class="driver-top">
+          <div class="driver-title">
+            <strong>${escapeHtml(driver.driverName || "Unknown driver")}</strong>
+            <span>${escapeHtml(driver.driverEmail || "-")}</span>
+          </div>
+
+          <div class="pill-row">
+            <span class="pill">${escapeHtml(driver.driverType || "-")}</span>
+            <span class="pill">Vehicle ${escapeHtml(driver.vehicleNumber || "-")}</span>
+          </div>
+        </div>
+
+        <div class="driver-grid">
+          <div class="mini">
+            <label>Latitude</label>
+            <span>${escapeHtml(lat.toFixed(6))}</span>
+          </div>
+
+          <div class="mini">
+            <label>Longitude</label>
+            <span>${escapeHtml(lng.toFixed(6))}</span>
+          </div>
+
+          <div class="mini">
+            <label>Updated</label>
+            <span>${escapeHtml(formatLocationUpdatedAt(driver.updatedAt))}</span>
+          </div>
+        </div>
+
+        <div class="driver-actions">
+          <a class="btn secondary small" href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener noreferrer">Open Map</a>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function startDriverLocationListener() {
+  const locationRef = ref(realtimeDb, "driverLocations");
+
+  onValue(locationRef, (snapshot) => {
+    renderDriverLocations(snapshot.val() || {});
+  }, (error) => {
+    console.error("Driver location listener failed", error);
+
+    const list = document.getElementById("driverLocationsList");
+    if (list) {
+      list.innerHTML = `<div class="empty-state">Failed to load driver locations.</div>`;
+    }
+  });
+}
 
 function getSafeLifecycle(existing) {
   return Array.isArray(existing) ? [...existing] : [];
@@ -3353,6 +3462,7 @@ bindNav();
 
 try {
   initAddressAutocomplete();
+  startDriverLocationListener();
   await loadDrivers();
   await loadJobs();
   } catch (error) {
