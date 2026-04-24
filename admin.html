@@ -4088,7 +4088,7 @@ assignments.forEach(({ claim, part }) => {
     acceptedDriverCapacity: Number(claim.passengerCapacity || 0),
     acceptedDriverPetsAccepted: claim.petsAccepted || "",
 
-    claimChain: [claim],
+    claimChain: existingClaims,
 
     status: "accepted",
     feeCharged: true,
@@ -4129,7 +4129,7 @@ rebuilt.parts
       acceptedDriverCapacity: 0,
       acceptedDriverPetsAccepted: "",
 
-      claimChain: [],
+      claimChain: existingClaims,
 
       status: "pending",
       feeCharged: false,
@@ -4168,8 +4168,8 @@ await batch.commit();
   });
 }
 
-    await loadJobs();
-editMode = false;
+    editMode = false;
+await loadJobs();
 return;
 
   } catch (err) {
