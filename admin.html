@@ -2854,14 +2854,15 @@ const basePayload = {
   totalPrice: quote.totalPrice,
 
   lifecycle: [
-    buildLifecycleEntry(
-      "created",
-      data.isAsap
-        ? "ASAP booking created by admin in El’Manuel"
-        : "Booking created by admin in El’Manuel",
-      normaliseEmail(auth.currentUser?.email)
-    )
-  ],
+  {
+    event: "created",
+    detail: data.isAsap
+      ? "ASAP booking created by admin in El’Manuel"
+      : "Booking created by admin in El’Manuel",
+    actor: normaliseEmail(auth.currentUser?.email),
+    at: new Date().toISOString()
+  }
+],
 
   createdAt: serverTimestamp(),
   updatedAt: serverTimestamp(),
