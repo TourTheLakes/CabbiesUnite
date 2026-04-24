@@ -4011,64 +4011,142 @@ for (const claim of existingClaims) {
 }
 
     const groupLifecycleEntry = buildLifecycleEntry(
-      "amended",
-      "Operational admin amendment",
-      { changes: changedFields }
-    );
+  "amended",
+  "Operational admin amendment",
+  { changes: changedFields }
+);
 
-    const rebuiltLifecycleBase = [
+const rebuiltLifecycleBase = [
   ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
   groupLifecycleEntry
 ];
 
-    const batch = writeBatch(db);
+const baseGroupPayload = {
+  customerName: updated.customerName,
+  customerPhonePreferred: updated.customerPhonePreferred,
+  notes: updated.notes,
+  pickupAddress: updated.pickupAddress,
+  dropoffAddress: updated.dropoffAddress,
+  scheduledDate: updated.scheduledDate,
+  scheduledTime: updated.scheduledTime,
 
-// 1. Assign existing claimed drivers (priority order already handled)
+  scheduledAt: rebuilt.scheduledAt,
+  scheduledAtIso: rebuilt.scheduledAtIso,
+
+  passengerCount: updated.passengerCount,
+  petsRequired: updated.petsRequired,
+  luggageSize: updated.luggageSize,
+  luggageCount: updated.luggageCount,
+
+  distanceMiles: rebuilt.distanceMiles,
+  hcPrice: rebuilt.hcPrice,
+  phPrice: rebuilt.phPrice,
+  liveQuotedPrice: rebuilt.liveQuotedPrice,
+  quotedPriceInitial: rebuilt.quotedPriceInitial,
+  quotedPriceCurrent: rebuilt.quotedPriceCurrent,
+  totalPrice: rebuilt.totalPrice,
+
+  isAsap: rebuilt.isAsap,
+  asapExpiresAt: rebuilt.asapExpiresAt,
+  wallExpiresAt: rebuilt.wallExpiresAt,
+
+  isShortJob: rebuilt.isShortJob,
+  phOnlyUntil: rebuilt.phOnlyUntil,
+
+  compound: rebuilt.parts.length > 1,
+  totalParts: rebuilt.parts.length,
+
+  feeCharged: false,
+  updatedAt: serverTimestamp(),
+  lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+};
+
+const batch = writeBatch(db);
+
+/*
+  IMPORTANT:
+  We delete the old parts first, then create a clean rebuilt set.
+  This avoids accidental stale accepted parts or old compound fragments.
+*/
+freshParts.forEach((oldPart) => {
+  batch.delete(doc(db, "jobs", oldPart.id));
+});
+
+// 1. Recreate assigned parts for compatible existing claimants
 assignments.forEach(({ claim, part }) => {
-  const ref = doc(db, "jobs", part.id || doc(collection(db, "jobs")).id);
+  const newRef = doc(collection(db, "jobs"));
 
-  batch.set(ref, {
+  batch.set(newRef, {
     ...baseGroupPayload,
     ...part,
+
     groupId: primary.groupId,
 
     acceptedByDriverId: claim.driverId,
-    acceptedDriverName: claim.driverName,
-    acceptedDriverCapacity: claim.passengerCapacity,
-    acceptedDriverPetsAccepted: claim.petsAccepted,
+    acceptedDriverName: claim.driverName || "",
+    acceptedDriverType: claim.driverType || "",
+    acceptedDriverCapacity: Number(claim.passengerCapacity || 0),
+    acceptedDriverPetsAccepted: claim.petsAccepted || "",
+
+    claimChain: [claim],
 
     status: "accepted",
     feeCharged: true,
 
-    updatedAt: serverTimestamp(),
-    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-  }, { merge: true });
+    createdAt: serverTimestamp(),
+    createdBy: normaliseEmail(auth.currentUser?.email),
+
+    lifecycle: [
+      ...rebuiltLifecycleBase,
+      buildLifecycleEntry(
+        "system",
+        "Existing compatible claimant retained after amendment",
+        {
+          driverId: claim.driverId,
+          driverName: claim.driverName || "",
+          partIndex: part.partIndex
+        }
+      )
+    ]
+  });
 });
 
-// 2. Any remaining parts go back to wall
+// 2. Recreate unassigned parts back onto the wall
 rebuilt.parts
-  .filter(part => !assignments.find(a => a.part.partIndex === part.partIndex))
+  .filter((part) => !assignments.some((assignment) => assignment.part.partIndex === part.partIndex))
   .forEach((part) => {
-    const ref = doc(collection(db, "jobs"));
+    const newRef = doc(collection(db, "jobs"));
 
-    batch.set(ref, {
+    batch.set(newRef, {
       ...baseGroupPayload,
       ...part,
+
       groupId: primary.groupId,
 
       acceptedByDriverId: "",
+      acceptedDriverName: "",
+      acceptedDriverType: "",
+      acceptedDriverCapacity: 0,
+      acceptedDriverPetsAccepted: "",
+
+      claimChain: [],
+
       status: "pending",
       feeCharged: false,
 
       createdAt: serverTimestamp(),
-      createdBy: normaliseEmail(auth.currentUser?.email)
+      createdBy: normaliseEmail(auth.currentUser?.email),
+
+      lifecycle: [
+        ...rebuiltLifecycleBase,
+        buildLifecycleEntry(
+          "system",
+          "Created as open wall part after amendment",
+          { partIndex: part.partIndex }
+        )
+      ]
     });
   });
-
-// 3. Delete all old parts
-freshParts.forEach((p) => {
-  batch.delete(doc(db, "jobs", p.id));
-});
 
 await batch.commit();
 
