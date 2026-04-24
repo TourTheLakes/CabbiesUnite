@@ -2214,6 +2214,7 @@ function isClaimCompatibleWithPart(claim, part, bookingIsCompound) {
   const driverCapacity = Number(claim.passengerCapacity || 0);
   const partPassengers = Number(part.passengerCount || 0);
   const luggageCount = Number(part.luggageCount || 0);
+  const luggageSize = String(part.luggageSize || "").trim();
   const petsRequired = Boolean(part.petsRequired);
 
   if (driverCapacity < partPassengers) {
@@ -2230,20 +2231,18 @@ function isClaimCompatibleWithPart(claim, part, bookingIsCompound) {
     };
   }
 
-  if (bookingIsCompound) {
-    if (driverCapacity <= 4 && luggageCount >= 4) {
-      return {
-        compatible: false,
-        reason: "Booking luggage now requires a larger vehicle."
-      };
-    }
+  if (driverCapacity <= 4 && (luggageSize === "3-4" || luggageCount >= 4)) {
+    return {
+      compatible: false,
+      reason: "Booking luggage now requires a larger vehicle."
+    };
+  }
 
-    if (driverCapacity <= 6 && partPassengers >= 5 && luggageCount >= 3) {
-      return {
-        compatible: false,
-        reason: "Booking luggage and passenger mix now requires a larger vehicle."
-      };
-    }
+  if (driverCapacity <= 6 && partPassengers >= 5 && (luggageSize === "2-3" || luggageSize === "3-4" || luggageCount >= 3)) {
+    return {
+      compatible: false,
+      reason: "Booking luggage and passenger mix now requires a larger vehicle."
+    };
   }
 
   return {
