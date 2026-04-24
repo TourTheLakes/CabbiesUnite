@@ -2162,17 +2162,48 @@ function getOrderedClaims(parts) {
   const claims = [];
 
   parts.forEach((part) => {
-    if (Array.isArray(part.claimChain)) {
-      part.claimChain.forEach((claim) => {
-        claims.push({
-          ...claim,
-          sourceJobId: part.id
-        });
+    const chain = Array.isArray(part.claimChain) ? part.claimChain : [];
+
+    chain.forEach((claim) => {
+      if (!claim || !claim.driverId) return;
+
+      claims.push({
+        ...claim,
+        claimedAt: Number(claim.claimedAt || 0),
+        sourceJobId: claim.sourceJobId || part.id
+      });
+    });
+
+    if (part.acceptedByDriverId) {
+      claims.push({
+        driverId: part.acceptedByDriverId,
+        driverName: part.acceptedDriverName || "",
+        driverType: part.acceptedDriverType || "",
+        passengerCapacity: Number(part.acceptedDriverCapacity || part.requiredSeats || 0),
+        petsAccepted: part.acceptedDriverPetsAccepted || "",
+        vehicleNumber: part.acceptedDriverVehicleNumber || "",
+        jobId: part.id,
+        sourceJobId: part.id,
+        claimedAt: Number(part.claimedAt || part.updatedAt?.toMillis?.() || Date.now())
       });
     }
   });
 
-  return claims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
+  claims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
+
+  const seenDrivers = new Set();
+  const uniqueClaims = [];
+
+  claims.forEach((claim) => {
+    const driverId = String(claim.driverId || "").trim();
+    if (!driverId) return;
+    if (seenDrivers.has(driverId)) return;
+
+    seenDrivers.add(driverId);
+    uniqueClaims.push(claim);
+  });
+
+  return uniqueClaims;
 }
 
 function driverAcceptsPets(claim) {
