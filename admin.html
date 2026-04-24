@@ -1477,6 +1477,37 @@ function combineUkDateAndTime(dateValue, timeValue) {
   });
 }
 
+    async function getDrivingDurationMinutes(origin, destination) {
+  return new Promise((resolve, reject) => {
+    if (!window.google || !google.maps || !google.maps.DirectionsService) {
+      reject(new Error("Google Directions not available."));
+      return;
+    }
+
+    const service = new google.maps.DirectionsService();
+
+    service.route(
+      {
+        origin,
+        destination,
+        travelMode: google.maps.TravelMode.DRIVING
+      },
+      (result, status) => {
+        if (status !== "OK" || !result.routes?.length || !result.routes[0].legs?.length) {
+          reject(new Error("Could not calculate driving duration."));
+          return;
+        }
+
+        const seconds = result.routes[0].legs.reduce((sum, leg) => {
+          return sum + (leg.duration?.value || 0);
+        }, 0);
+
+        resolve(Math.ceil(seconds / 60));
+      }
+    );
+  });
+}
+
 function applyDistanceBuffer(miles) {
   const bufferMiles = 0.5 / 1.609344;
   return miles + bufferMiles;
@@ -2359,8 +2390,9 @@ function getDriverAcceptedJobsFromParts(driverId, allParts, currentGroupId) {
   });
 }
 
-function hasAdminDiaryTimeConflict(candidatePart, driverAcceptedJobs) {
+async function hasAdminDiaryTimeConflict(candidatePart, driverAcceptedJobs) {
   const candidateStart = getJobStartMs(candidatePart);
+
   if (candidateStart <= 0) {
     return {
       conflict: false,
@@ -2368,18 +2400,55 @@ function hasAdminDiaryTimeConflict(candidatePart, driverAcceptedJobs) {
     };
   }
 
-  const conflictWindowMs = 2 * 60 * 60 * 1000;
-
   for (const existing of driverAcceptedJobs) {
     const existingStart = getJobStartMs(existing);
     if (existingStart <= 0) continue;
 
-    const gapMs = Math.abs(existingStart - candidateStart);
+    let firstJob;
+    let secondJob;
+    let firstStart;
+    let secondStart;
 
-    if (gapMs <= conflictWindowMs) {
+    if (candidateStart <= existingStart) {
+      firstJob = candidatePart;
+      secondJob = existing;
+      firstStart = candidateStart;
+      secondStart = existingStart;
+    } else {
+      firstJob = existing;
+      secondJob = candidatePart;
+      firstStart = existingStart;
+      secondStart = candidateStart;
+    }
+
+    const availableGapMinutes = Math.floor((secondStart - firstStart) / 60000);
+
+    let firstJourneyMinutes;
+    let transferMinutes;
+
+    try {
+      firstJourneyMinutes = await getDrivingDurationMinutes(
+        firstJob.pickupAddress,
+        firstJob.dropoffAddress
+      );
+
+      transferMinutes = await getDrivingDurationMinutes(
+        firstJob.dropoffAddress,
+        secondJob.pickupAddress
+      );
+    } catch (error) {
       return {
         conflict: true,
-        reason: `Driver already has a diary booking within 2 hours: ${existing.scheduledDate || ""} ${existing.scheduledTime || ""}`.trim()
+        reason: "Could not verify driver diary route timing after amendment."
+      };
+    }
+
+    const requiredMinutes = firstJourneyMinutes + transferMinutes + 8;
+
+    if (requiredMinutes > availableGapMinutes) {
+      return {
+        conflict: true,
+        reason: `Driver diary conflict: first journey requires ~${firstJourneyMinutes} mins, onward travel requires ~${transferMinutes} mins, plus 8 mins buffer. Required total ${requiredMinutes} mins, available gap ${availableGapMinutes} mins.`
       };
     }
   }
@@ -2388,7 +2457,7 @@ function hasAdminDiaryTimeConflict(candidatePart, driverAcceptedJobs) {
     conflict: false,
     reason: ""
   };
-} 
+}
 
 function isClaimCompatibleWithPart(claim, part, bookingIsCompound) {
   const driverCapacity = Number(claim.passengerCapacity || 0);
@@ -4230,10 +4299,10 @@ for (const claim of existingClaims) {
       continue;
     }
 
-    const diaryCheck = hasAdminDiaryTimeConflict(
-      candidatePart,
-      driverAcceptedJobs
-    );
+    const diaryCheck = await hasAdminDiaryTimeConflict(
+  candidatePart,
+  driverAcceptedJobs
+);
 
     if (diaryCheck.conflict) {
       removalReason = diaryCheck.reason || "Driver already has a conflicting diary booking.";
