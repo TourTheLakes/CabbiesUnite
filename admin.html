@@ -2292,12 +2292,13 @@ function startDriverLocationListener() {
 
       const minutesStill = Math.floor((Date.now() - entry.lastMovedAt) / 60000);
       const label = minutesStill > 0
-        ? `${name} — last moved ${minutesStill}m ago`
-        : name;
+  ? `Last moved ${minutesStill}m ago`
+  : "Moving / active";
 
-      entry.marker.setPosition(position);
-      entry.marker.setTitle(label);
-      entry.infoWindow.setContent(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(label)}`);
+entry.marker.setTitle(name);
+entry.infoWindow.setContent(
+  `<strong>${escapeHtml(name)}</strong><br>${escapeHtml(label)}`
+);
     }
   });
 }
