@@ -2276,7 +2276,7 @@ function startDriverLocationListener() {
           name,
           lastLat: position.lat,
           lastLng: position.lng,
-          lastMovedAt: Date.now()
+          lastMovedAt: Number(loc.lastMovedAt || loc.updatedAt || Date.now())
         };
 
         continue;
@@ -2284,11 +2284,9 @@ function startDriverLocationListener() {
 
       const entry = driverMarkers[driverId];
 
-      if (entry.lastLat !== position.lat || entry.lastLng !== position.lng) {
-        entry.lastLat = position.lat;
-        entry.lastLng = position.lng;
-        entry.lastMovedAt = Date.now();
-      }
+      entry.lastLat = position.lat;
+entry.lastLng = position.lng;
+entry.lastMovedAt = Number(loc.lastMovedAt || loc.updatedAt || entry.lastMovedAt || Date.now());
 
       const minutesStill = Math.floor((Date.now() - entry.lastMovedAt) / 60000);
       const label = minutesStill > 0
