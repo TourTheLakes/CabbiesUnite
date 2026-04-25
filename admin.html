@@ -3811,8 +3811,6 @@ async function loadJobs() {
   const jobsList = document.getElementById("jobsList");
   jobsList.innerHTML = `<div class="empty-state">Loading jobs...</div>`;
 
-  await expireOverduePendingBookings();
-
   const q = query(collection(db, "jobs"), orderBy("createdAt", "desc"));
   const snapshot = await getDocs(q);
 
