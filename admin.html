@@ -1121,14 +1121,7 @@
 </section>
 
       <section id="section-where" class="hidden">
-  <div class="page-header">
-    <h2>Where Are You</h2>
-    <p>Live driver locations from the app.</p>
-  </div>
-
-  <div class="panel">
-    <div id="driverLocationsList" class="drivers-list"></div>
-  </div>
+  <div id="driverMap" style="width:100%; height:calc(100vh - 90px);"></div>
 </section>
 
       <section id="section-wallets" class="hidden">
@@ -1214,6 +1207,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const realtimeDb = getDatabase(app);
 const provider = new GoogleAuthProvider();
+
+let driverMap = null;
+const driverMarkers = {};
 
     const loginScreen = document.getElementById("loginScreen");
     const appShell = document.getElementById("appShell");
@@ -2220,17 +2216,88 @@ function renderDriverLocations(locations) {
   }).join("");
 }
 
+    function initDriverMap() {
+  const mapNode = document.getElementById("driverMap");
+  if (!mapNode) return;
+  if (!window.google || !google.maps) return;
+  if (driverMap) return;
+
+  driverMap = new google.maps.Map(mapNode, {
+    center: { lat: 54.3781, lng: -2.7499 },
+    zoom: 10,
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: true
+  });
+}
+
 function startDriverLocationListener() {
-  const locationRef = ref(realtimeDb, "driverLocations");
+  const locationsRef = ref(realtimeDb, "driverLocations");
 
-  onValue(locationRef, (snapshot) => {
-    renderDriverLocations(snapshot.val() || {});
-  }, (error) => {
-    console.error("Driver location listener failed", error);
+  onValue(locationsRef, async (snapshot) => {
+    if (!driverMap) {
+      initDriverMap();
+    }
 
-    const list = document.getElementById("driverLocationsList");
-    if (list) {
-      list.innerHTML = `<div class="empty-state">Failed to load driver locations.</div>`;
+    if (!driverMap) return;
+
+    const data = snapshot.val() || {};
+
+    for (const [driverId, loc] of Object.entries(data)) {
+      if (!loc || loc.lat == null || loc.lng == null) continue;
+
+      const position = {
+        lat: Number(loc.lat),
+        lng: Number(loc.lng)
+      };
+
+      if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng)) continue;
+
+      const name = await getDriverDisplayName(driverId);
+
+      if (!driverMarkers[driverId]) {
+        const marker = new google.maps.Marker({
+          position,
+          map: driverMap,
+          title: name
+        });
+
+        const infoWindow = new google.maps.InfoWindow({
+          content: `<strong>${escapeHtml(name)}</strong>`
+        });
+
+        marker.addListener("click", () => {
+          infoWindow.open(driverMap, marker);
+        });
+
+        driverMarkers[driverId] = {
+          marker,
+          infoWindow,
+          name,
+          lastLat: position.lat,
+          lastLng: position.lng,
+          lastMovedAt: Date.now()
+        };
+
+        continue;
+      }
+
+      const entry = driverMarkers[driverId];
+
+      if (entry.lastLat !== position.lat || entry.lastLng !== position.lng) {
+        entry.lastLat = position.lat;
+        entry.lastLng = position.lng;
+        entry.lastMovedAt = Date.now();
+      }
+
+      const minutesStill = Math.floor((Date.now() - entry.lastMovedAt) / 60000);
+      const label = minutesStill > 0
+        ? `${name} — last moved ${minutesStill}m ago`
+        : name;
+
+      entry.marker.setPosition(position);
+      entry.marker.setTitle(label);
+      entry.infoWindow.setContent(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(label)}`);
     }
   });
 }
@@ -3616,9 +3683,10 @@ bindNav();
 
 try {
   initAddressAutocomplete();
-  startDriverLocationListener();
-  await loadDrivers();
-  await loadJobs();
+initDriverMap();
+startDriverLocationListener();
+await loadDrivers();
+await loadJobs();
   } catch (error) {
     console.error(error);
     driversList.innerHTML = `<div class="empty-state">Failed to load data.</div>`;
