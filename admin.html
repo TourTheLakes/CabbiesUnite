@@ -2584,6 +2584,20 @@ function formatLifecycleTimestamp(value) {
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 }
 
+    function formatFirestoreTimestamp(value) {
+  if (!value) return "-";
+
+  if (typeof value.toDate === "function") {
+    return formatLifecycleTimestamp(value.toDate().toISOString());
+  }
+
+  if (typeof value === "number") {
+    return formatLifecycleTimestamp(new Date(value).toISOString());
+  }
+
+  return formatLifecycleTimestamp(value);
+}
+
     function isOperationalChange(original, updated) {
   return (
     original.pickupAddress !== updated.pickupAddress ||
@@ -3790,6 +3804,28 @@ for (const booking of filteredBookings) {
   }
 }
 
+    const customerNotificationSnapshot = await getDocs(
+  query(collection(db, "customerNotifications"), orderBy("createdAt", "desc"))
+);
+
+const customerNotifications = customerNotificationSnapshot.docs.map((docSnap) => ({
+  ...docSnap.data(),
+  id: docSnap.id
+}));
+
+const customerNotificationsByJobId = {};
+
+customerNotifications.forEach((notification) => {
+  const jobId = String(notification.jobId || "").trim();
+  if (!jobId) return;
+
+  if (!customerNotificationsByJobId[jobId]) {
+    customerNotificationsByJobId[jobId] = [];
+  }
+
+  customerNotificationsByJobId[jobId].push(notification);
+});
+
   function buildLifecycleHtml(primary) {
   const lifecycle = Array.isArray(primary.lifecycle) ? primary.lifecycle : [];
 
@@ -3823,6 +3859,28 @@ for (const booking of filteredBookings) {
       </div>
     `;
   }).join("");
+}
+
+    function buildCustomerNotificationsHtml(parts) {
+  const notifications = [];
+
+  parts.forEach((part) => {
+    const partNotifications = customerNotificationsByJobId[part.id] || [];
+    notifications.push(...partNotifications);
+  });
+
+  if (!notifications.length) {
+    return `<div class="job-life-entry"><div>No customer notifications yet.</div></div>`;
+  }
+
+  return notifications.map((notification) => `
+    <div class="job-life-entry">
+      <div><strong>${escapeHtml(notification.type || "notification")}</strong></div>
+      <div>${escapeHtml(notification.message || "-")}</div>
+      <div>ETA: ${notification.etaMinutes ?? notification.currentEtaMinutes ?? "-"}</div>
+      <div>${escapeHtml(formatFirestoreTimestamp(notification.createdAt))}</div>
+    </div>
+  `).join("");
 }
 
     
@@ -4049,6 +4107,13 @@ const showClaimCountdown =
                 <strong>Lifecycle</strong>
                 <div class="job-life">
                   ${buildLifecycleHtml(primary)}
+                </div>
+              </div>
+
+              <div class="job-section">
+                <strong>Customer Notifications</strong>
+                <div class="job-life">
+                  ${buildCustomerNotificationsHtml(parts)}
                 </div>
               </div>
 
