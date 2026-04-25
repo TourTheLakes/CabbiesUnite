@@ -2624,6 +2624,14 @@ function getBookingDisplayStatus(primary, parts) {
   return changes;
 }
 
+    function buildBookingFailedCustomerMessage(job) {
+  if (job.isAsap) {
+    return "We’re sorry, your ASAP journey request has failed as we were unable to match it with an available driver.";
+  }
+
+  return `We’re sorry, your journey request for ${job.scheduledDate || "-"} at ${job.scheduledTime || "-"} has failed as we were unable to match it with an available driver.`;
+}
+
 function buildLifecycleEntry(event, detail, extra = {}) {
   return {
     event,
@@ -3767,6 +3775,35 @@ async function getDriverDisplayName(driverId) {
         lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
       });
     }
+
+    const scheduledAt = Number(primary.scheduledAt || 0);
+    const asapRequestedAt = Number(primary.asapRequestedAt || 0);
+
+    await addDoc(collection(db, "customerNotifications"), {
+      jobId: primary.id,
+      bookingGroupId: primary.groupId || primary.id,
+      type: "booking_failed",
+      message: buildBookingFailedCustomerMessage(primary),
+
+      isAsap: Boolean(primary.isAsap),
+      scheduledDate: primary.scheduledDate || "",
+      scheduledTime: primary.scheduledTime || "",
+      scheduledAt: scheduledAt || null,
+
+      failedAt: now,
+      failedReason: "Unable to accommodate before expiry",
+
+      minutesBeforePickup: scheduledAt > 0
+        ? Math.max(0, Math.floor((scheduledAt - now) / 60000))
+        : null,
+
+      minutesSinceRequest: asapRequestedAt > 0
+        ? Math.max(0, Math.floor((now - asapRequestedAt) / 60000))
+        : null,
+
+      createdAt: serverTimestamp(),
+      createdBy: normaliseEmail(auth.currentUser?.email)
+    });
   }
 }
 
@@ -3944,7 +3981,13 @@ customerNotifications.forEach((notification) => {
     <div class="job-life-entry">
       <div><strong>${escapeHtml(notification.type || "notification")}</strong></div>
       <div>${escapeHtml(notification.message || "-")}</div>
-      <div>ETA: ${notification.etaMinutes ?? notification.currentEtaMinutes ?? "-"}</div>
+      <div>
+        ${
+          notification.type === "booking_failed"
+            ? `Failed: ${notification.isAsap ? "ASAP" : `${notification.scheduledDate || "-"} ${notification.scheduledTime || "-"}`}`
+            : `ETA: ${notification.etaMinutes ?? notification.currentEtaMinutes ?? "-"}`
+        }
+      </div>
       <div>${escapeHtml(formatFirestoreTimestamp(notification.createdAt))}</div>
     </div>
   `).join("");
