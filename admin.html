@@ -3653,6 +3653,14 @@ resetManualBookingBtn.addEventListener("click", () => {
   }
 });
 
+    const passengerInput = document.getElementById("manualPassengerCount");
+
+if (passengerInput) {
+  passengerInput.addEventListener("wheel", (event) => {
+    event.preventDefault();
+  });
+}
+
     manualIsAsap.addEventListener("change", () => {
   syncManualBookingMode();
   calculateManualQuote();
