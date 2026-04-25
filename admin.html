@@ -1180,7 +1180,8 @@
   doc,
   updateDoc,
   deleteDoc,
-  writeBatch
+  writeBatch,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     import {
@@ -1236,6 +1237,7 @@ const manualScheduledDateField = manualScheduledDate ? manualScheduledDate.close
 const manualScheduledTimeField = manualScheduledTime ? manualScheduledTime.closest(".field") : null;
 
 let manualBookingMessageTimer = null;
+    let jobsUnsubscribe = null;
 
     function getTodayIsoDate() {
      const now = new Date();
@@ -3811,15 +3813,24 @@ async function loadJobs() {
   const jobsList = document.getElementById("jobsList");
   jobsList.innerHTML = `<div class="empty-state">Loading jobs...</div>`;
 
+  if (jobsUnsubscribe) {
+    jobsUnsubscribe();
+    jobsUnsubscribe = null;
+  }
+
   const q = query(collection(db, "jobs"), orderBy("createdAt", "desc"));
-  const snapshot = await getDocs(q);
 
-  cachedJobs = snapshot.docs.map(doc => ({
-    ...doc.data(),
-    id: doc.id
-  }));
+  jobsUnsubscribe = onSnapshot(q, async (snapshot) => {
+    cachedJobs = snapshot.docs.map((docSnap) => ({
+      ...docSnap.data(),
+      id: docSnap.id
+    }));
 
-  await renderJobs();
+    await renderJobs();
+  }, (error) => {
+    console.error("Jobs listener failed", error);
+    jobsList.innerHTML = `<div class="empty-state">Failed to load jobs.</div>`;
+  });
 }
 
   async function renderJobs() {
