@@ -4551,7 +4551,16 @@ const rebuiltLifecycleBase = [
   groupLifecycleEntry
 ];
 
-const baseGroupPayload = {
+    const baseGroupPayload = {
+  source: freshParts[0].source || primary.source || "admin",
+  createdByDriverId: freshParts[0].createdByDriverId || primary.createdByDriverId || "",
+  createdByDriverName: freshParts[0].createdByDriverName || primary.createdByDriverName || "",
+  createdByDriverEmail: freshParts[0].createdByDriverEmail || primary.createdByDriverEmail || "",
+  creatorCommissionRate: Number(freshParts[0].creatorCommissionRate || primary.creatorCommissionRate || 0),
+  creatorCommissionAmount: Number(freshParts[0].creatorCommissionAmount || primary.creatorCommissionAmount || 0),
+  creatorCommissionPaid: Boolean(freshParts[0].creatorCommissionPaid || primary.creatorCommissionPaid || false),
+  creatorCommissionPaidAt: freshParts[0].creatorCommissionPaidAt || primary.creatorCommissionPaidAt || null,
+
   customerName: updated.customerName,
   customerPhonePreferred: updated.customerPhonePreferred,
   notes: updated.notes,
