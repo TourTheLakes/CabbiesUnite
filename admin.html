@@ -3137,9 +3137,29 @@ function getManualBookingFormData() {
   return "";
 }
 
-    function validateManualBookingData(data) {
+    function validateAdminBookingPhone(value, label) {
+  const clean = String(value || "").trim().replace(/\s+/g, "");
+
+  if (!clean) {
+    return `${label} is required.`;
+  }
+
+  if (clean.startsWith("+")) {
+    return "";
+  }
+
+  if (/^07\d{9}$/.test(clean)) {
+    return "";
+  }
+
+  return `${label}: UK mobile numbers must start 07. Foreign numbers must include +country code.`;
+}
+
+function validateManualBookingData(data) {
   if (!data.customerName) return "Customer name is required.";
-  if (!data.customerPhone) return "Contact number is required.";
+
+  const customerPhoneError = validateAdminBookingPhone(data.customerPhone, "Contact number");
+  if (customerPhoneError) return customerPhoneError;
   if (!data.pickupAddress) return "Pickup address is required.";
   if (!data.dropoffAddress) return "Dropoff address is required.";
   if (!data.scheduledDate) return "Date is required.";
@@ -3167,8 +3187,9 @@ function getManualBookingFormData() {
     return "Passenger count must be valid.";
   }
 
-  if (data.phoneConfirmed === "no" && !data.preferredPhone) {
-    return "Enter the preferred contact number.";
+  if (data.phoneConfirmed === "no") {
+    const preferredPhoneError = validateAdminBookingPhone(data.preferredPhone, "Preferred contact number");
+    if (preferredPhoneError) return preferredPhoneError;
   }
 
   return "";
