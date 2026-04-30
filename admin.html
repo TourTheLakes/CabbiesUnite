@@ -2367,31 +2367,70 @@ function buildAdminFeeOverrideState(primary) {
 function getOrderedClaims(parts) {
   const claims = [];
 
+  function getCachedDriver(driverId) {
+    const cleanDriverId = String(driverId || "").trim();
+    if (!cleanDriverId) return null;
+
+    return cachedDrivers.find((driver) => driver.id === cleanDriverId) || null;
+  }
+
+  function enrichClaim(rawClaim, part) {
+    const driverId = String(rawClaim.driverId || "").trim();
+    const cachedDriver = getCachedDriver(driverId);
+
+    return {
+      ...rawClaim,
+      driverId,
+      driverName: rawClaim.driverName || cachedDriver?.fullName || "",
+      driverEmail: rawClaim.driverEmail || cachedDriver?.googleEmail || "",
+      driverType: rawClaim.driverType || cachedDriver?.driverType || "",
+      vehicleNumber: rawClaim.vehicleNumber || cachedDriver?.vehicleNumber || "",
+      passengerCapacity: Number(
+        rawClaim.passengerCapacity ||
+        cachedDriver?.passengerCapacity ||
+        part?.acceptedDriverCapacity ||
+        part?.requiredSeats ||
+        0
+      ),
+      petsAccepted: rawClaim.petsAccepted || cachedDriver?.petsAccepted || "",
+      jobId: rawClaim.jobId || part?.id || "",
+      sourceJobId: rawClaim.sourceJobId || part?.id || "",
+      claimedAt: Number(rawClaim.claimedAt || part?.feeChargedAt || part?.updatedAt?.toMillis?.() || Date.now()),
+      feeCharged: Number(
+        rawClaim.feeCharged ??
+        part?.feeChargedAmount ??
+        part?.effectiveFee ??
+        0
+      )
+    };
+  }
+
   parts.forEach((part) => {
     const chain = Array.isArray(part.claimChain) ? part.claimChain : [];
 
     chain.forEach((claim) => {
       if (!claim || !claim.driverId) return;
-
-      claims.push({
-        ...claim,
-        claimedAt: Number(claim.claimedAt || 0),
-        sourceJobId: claim.sourceJobId || part.id
-      });
+      claims.push(enrichClaim(claim, part));
     });
 
     if (part.acceptedByDriverId) {
-      claims.push({
-        driverId: part.acceptedByDriverId,
-        driverName: part.acceptedDriverName || "",
-        driverType: part.acceptedDriverType || "",
-        passengerCapacity: Number(part.acceptedDriverCapacity || part.requiredSeats || 0),
-        petsAccepted: part.acceptedDriverPetsAccepted || "",
-        vehicleNumber: part.acceptedDriverVehicleNumber || "",
-        jobId: part.id,
-        sourceJobId: part.id,
-        claimedAt: Number(part.claimedAt || part.updatedAt?.toMillis?.() || Date.now())
-      });
+      claims.push(
+        enrichClaim(
+          {
+            driverId: part.acceptedByDriverId,
+            driverName: part.acceptedDriverName || "",
+            driverType: part.acceptedDriverType || "",
+            passengerCapacity: Number(part.acceptedDriverCapacity || part.requiredSeats || 0),
+            petsAccepted: part.acceptedDriverPetsAccepted || "",
+            vehicleNumber: part.acceptedDriverVehicleNumber || "",
+            jobId: part.id,
+            sourceJobId: part.id,
+            claimedAt: Number(part.feeChargedAt || part.updatedAt?.toMillis?.() || Date.now()),
+            feeCharged: Number(part.feeChargedAmount ?? part.effectiveFee ?? 0)
+          },
+          part
+        )
+      );
     }
   });
 
