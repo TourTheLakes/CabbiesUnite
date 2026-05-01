@@ -4513,7 +4513,18 @@ const assignments = [];
 const removedClaims = [];
 const usedPartIndexes = new Set();
 
-for (const claim of existingClaims) {
+const claimsForReassignment = [...existingClaims].sort((a, b) => {
+  const aCapacity = Number(a.passengerCapacity || 0);
+  const bCapacity = Number(b.passengerCapacity || 0);
+
+  if (aCapacity !== bCapacity) {
+    return aCapacity - bCapacity;
+  }
+
+  return Number(a.claimedAt || 0) - Number(b.claimedAt || 0);
+});
+
+for (const claim of claimsForReassignment) {
   let matchedPart = null;
   let removalReason = "Booking no longer compatible after amendment";
 
@@ -4535,8 +4546,8 @@ for (const claim of existingClaims) {
       scheduledTime: updated.scheduledTime,
       pickupAddress: updated.pickupAddress,
       dropoffAddress: updated.dropoffAddress,
-      luggageCount: rebuilt.luggageCount,
-      petsRequired: rebuilt.petsRequired
+      luggageCount: part.luggageCount,
+      petsRequired: updated.petsRequired
     };
 
     const compatibility = isClaimCompatibleWithPart(
