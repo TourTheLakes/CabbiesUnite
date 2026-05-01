@@ -4528,6 +4528,14 @@ for (const claim of claimsForReassignment) {
   let matchedPart = null;
   let removalReason = "Booking no longer compatible after amendment";
 
+  if (!rebuilt.parts || !rebuilt.parts.length) {
+    removedClaims.push({
+      claim,
+      reason: removalReason
+    });
+    continue;
+  }
+
   const driverAcceptedJobs = getDriverAcceptedJobsFromParts(
     claim.driverId,
     allAcceptedParts,
@@ -4561,10 +4569,22 @@ for (const claim of claimsForReassignment) {
       continue;
     }
 
-    const diaryCheck = await hasAdminDiaryTimeConflict(
-  candidatePart,
-  driverAcceptedJobs
-);
+    let diaryCheck = { conflict: false };
+
+    try {
+      if (
+        candidatePart.scheduledAt &&
+        candidatePart.pickupAddress &&
+        candidatePart.dropoffAddress
+      ) {
+        diaryCheck = await hasAdminDiaryTimeConflict(
+          candidatePart,
+          driverAcceptedJobs
+        );
+      }
+    } catch (e) {
+      console.warn("Diary check failed:", e);
+    }
 
     if (diaryCheck.conflict) {
       removalReason = diaryCheck.reason || "Driver already has a conflicting diary booking.";
