@@ -1164,8 +1164,6 @@
       getAuth,
       GoogleAuthProvider,
       signInWithPopup,
-      signInWithRedirect,
-      getRedirectResult,
       signOut,
       onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -2353,8 +2351,6 @@ async function refundDriverFee(driverId, amount, bookingGroupId, reason) {
     bookingGroupId,
     type: "refund",
     amount: Number(amount.toFixed(2)),
-    balanceBefore: currentWallet,
-    balanceAfter: nextWallet,
     reason,
     createdAt: serverTimestamp(),
     createdBy: normaliseEmail(auth.currentUser?.email)
@@ -2489,39 +2485,6 @@ function getActiveAcceptedClaims(parts) {
 
   return uniqueClaims;
 }
-
-function getSelfBookingCreatorFallbackClaim(parts) {
-  const primary = parts[0] || {};
-  const source = String(primary.source || "").trim().toLowerCase();
-  const creatorId = String(primary.createdByDriverId || "").trim();
-
-  if (source !== "driver" || !creatorId) return null;
-
-  const historicalClaims = getHistoricalClaimChain(parts);
-  const historicalMatch = [...historicalClaims]
-    .reverse()
-    .find((claim) => String(claim.driverId || "").trim() === creatorId);
-
-  const cachedDriver = cachedDrivers.find((driver) => driver.id === creatorId) || null;
-
-  return enrichClaimForAdmin(
-    {
-      ...(historicalMatch || {}),
-      driverId: creatorId,
-      driverName: primary.createdByDriverName || historicalMatch?.driverName || cachedDriver?.fullName || "",
-      driverEmail: primary.createdByDriverEmail || historicalMatch?.driverEmail || cachedDriver?.googleEmail || "",
-      driverType: historicalMatch?.driverType || cachedDriver?.driverType || "",
-      vehicleNumber: historicalMatch?.vehicleNumber || cachedDriver?.vehicleNumber || "",
-      passengerCapacity: Number(historicalMatch?.passengerCapacity || cachedDriver?.passengerCapacity || 0),
-      petsAccepted: historicalMatch?.petsAccepted || cachedDriver?.petsAccepted || "",
-      claimedAt: Number(historicalMatch?.claimedAt || primary.createdAt?.toMillis?.() || Date.now()),
-      feeCharged: 0,
-      selfCreatedReclaim: true
-    },
-    primary
-  );
-}
-
 
 function getClaimRefundAmount(claim) {
   const amount = Number(claim?.feeCharged || 0);
@@ -3379,6 +3342,7 @@ if (isShortJob) {
 
 const basePayload = {
   source: "admin",
+  hasReenteredPublicWallAfterCreatorLoss: false,
   customerName: data.customerName,
   customerPhoneOriginal: data.customerPhone,
   customerPhonePreferred: data.phoneConfirmed === "yes" ? data.customerPhone : data.preferredPhone,
@@ -3646,13 +3610,6 @@ if (action === "confirm-wallet") {
         setLoginStatus("");
       } catch (error) {
         console.error(error);
-
-        if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
-          setLoginStatus("Popup blocked. Redirecting to Google sign-in...");
-          await signInWithRedirect(auth, provider);
-          return;
-        }
-
         setLoginStatus("Google sign-in failed.", true);
       }
     }
@@ -3823,11 +3780,6 @@ updateClaimCountdownPills();
 setInterval(updateClaimCountdownPills, 1000);
 
 bindNav();
-
-    getRedirectResult(auth).catch((error) => {
-      console.error("Redirect sign-in failed", error);
-      setLoginStatus("Google sign-in failed after redirect.", true);
-    });
 
     onAuthStateChanged(auth, async (user) => {
   if (!user) {
@@ -4589,11 +4541,7 @@ const showClaimCountdown =
     );
 
     const historicalClaimChain = getHistoricalClaimChain(freshParts);
-    const activeAcceptedClaims = getActiveAcceptedClaims(freshParts);
-    const creatorFallbackClaim = activeAcceptedClaims.length ? null : getSelfBookingCreatorFallbackClaim(freshParts);
-    const existingClaims = creatorFallbackClaim
-      ? [creatorFallbackClaim]
-      : activeAcceptedClaims;
+    const existingClaims = getActiveAcceptedClaims(freshParts);
 
 const acceptedSnapshot = await getDocs(
   query(collection(db, "jobs"), where("status", "==", "accepted"))
@@ -4711,20 +4659,9 @@ for (const claim of claimsForReassignment) {
   { changes: changedFields }
 );
 
-const removedClaimLifecycleEntries = removedClaims.map((item) => buildLifecycleEntry(
-  "driver_removed",
-  item.reason,
-  {
-    driverId: item.claim.driverId,
-    driverName: item.claim.driverName || "",
-    refundAmount: getClaimRefundAmount(item.claim)
-  }
-));
-
 const rebuiltLifecycleBase = [
   ...(Array.isArray(freshParts[0].lifecycle) ? freshParts[0].lifecycle : []),
-  groupLifecycleEntry,
-  ...removedClaimLifecycleEntries
+  groupLifecycleEntry
 ];
 
     const baseGroupPayload = {
@@ -4736,6 +4673,11 @@ const rebuiltLifecycleBase = [
   creatorCommissionAmount: Number(freshParts[0].creatorCommissionAmount || primary.creatorCommissionAmount || 0),
   creatorCommissionPaid: Boolean(freshParts[0].creatorCommissionPaid || primary.creatorCommissionPaid || false),
   creatorCommissionPaidAt: freshParts[0].creatorCommissionPaidAt || primary.creatorCommissionPaidAt || null,
+  hasReenteredPublicWallAfterCreatorLoss: Boolean(
+    freshParts.some((part) => Boolean(part.hasReenteredPublicWallAfterCreatorLoss)) ||
+    primary.hasReenteredPublicWallAfterCreatorLoss ||
+    false
+  ),
 
   customerName: updated.customerName,
   customerPhonePreferred: updated.customerPhonePreferred,
@@ -4819,15 +4761,11 @@ assignments.forEach(({ claim, part }) => {
       ...rebuiltLifecycleBase,
       buildLifecycleEntry(
         "system",
-        claim.selfCreatedReclaim
-          ? "Self-created booking returned to creator after admin amendment. No acceptance fee charged."
-          : "Existing compatible claimant retained after amendment",
+        "Existing compatible claimant retained after amendment",
         {
           driverId: claim.driverId,
           driverName: claim.driverName || "",
-          partIndex: part.partIndex,
-          selfCreatedReclaim: Boolean(claim.selfCreatedReclaim),
-          feeCharged: Number(claim.feeCharged || 0)
+          partIndex: part.partIndex
         }
       )
     ]
@@ -4845,6 +4783,7 @@ rebuilt.parts
       ...part,
 
       groupId: primary.groupId,
+      hasReenteredPublicWallAfterCreatorLoss: true,
 
       acceptedByDriverId: "",
       acceptedDriverName: "",
