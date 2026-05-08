@@ -1127,9 +1127,15 @@
       <section id="section-wallets" class="hidden">
         <div class="page-header">
           <h2>Wallets</h2>
-          <p>Phase 1 wallet inspection and adjustments will be layered next.</p>
+          <p>Driver balances with booking-linked transaction history.</p>
         </div>
-        <div class="section-placeholder">Wallet tools not yet built in this first pass.</div>
+        <div class="panel">
+          <div class="toolbar">
+            <input id="walletSearch" type="search" placeholder="Search by driver, email, booking, pickup or destination" />
+            <button id="refreshWalletsBtn" class="btn secondary small" type="button">Refresh</button>
+          </div>
+          <div id="walletsList"></div>
+        </div>
       </section>
 
       <section id="section-penalties" class="hidden">
@@ -1257,6 +1263,9 @@ let manualBookingMessageTimer = null;
     const quoteVehicleBreakdown = document.getElementById("quoteVehicleBreakdown");
     const quoteWarning = document.getElementById("quoteWarning");
     const jobSearchPhone = document.getElementById("jobSearchPhone");
+    const walletSearch = document.getElementById("walletSearch");
+    const refreshWalletsBtn = document.getElementById("refreshWalletsBtn");
+    const walletsList = document.getElementById("walletsList");
 
     const navButtons = [...document.querySelectorAll(".nav-btn")];
     const sections = {
@@ -1274,6 +1283,7 @@ let manualBookingMessageTimer = null;
     let editingDriverId = null;
     let editingWalletId = null;
     let cachedJobs = [];
+    let cachedWalletTransactions = [];
 
     function normaliseEmail(email) {
       return String(email || "").trim().toLowerCase();
@@ -3538,14 +3548,34 @@ if (action === "confirm-wallet") {
     return;
   }
 
+  const previousBalance = Number(record.walletBalance || 0);
+  const roundedNextBalance = Number(nextBalance.toFixed(2));
+  const movement = Number((roundedNextBalance - previousBalance).toFixed(2));
+
   await updateDoc(doc(db, "drivers", id), {
-    walletBalance: Number(nextBalance.toFixed(2)),
+    walletBalance: roundedNextBalance,
     updatedAt: serverTimestamp(),
     lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
   });
 
+  if (movement !== 0) {
+    await addDoc(collection(db, "walletTransactions"), {
+      driverId: id,
+      bookingGroupId: "ADMIN-WALLET-ADJUSTMENT",
+      jobId: "",
+      type: "admin_adjustment",
+      amount: movement,
+      balanceBefore: previousBalance,
+      balanceAfter: roundedNextBalance,
+      reason: "Admin wallet adjustment",
+      createdAt: serverTimestamp(),
+      createdBy: normaliseEmail(auth.currentUser?.email)
+    });
+  }
+
   editingWalletId = null;
   await loadDrivers();
+  await loadWallets();
   return;
 }
   } catch (error) {
@@ -3730,6 +3760,8 @@ refreshDriversBtn.addEventListener("click", loadDrivers);
 driversList.addEventListener("click", handleDriverListClick);
 
 jobSearchPhone.addEventListener("input", renderJobs);
+if (walletSearch) walletSearch.addEventListener("input", renderWallets);
+if (refreshWalletsBtn) refreshWalletsBtn.addEventListener("click", loadWallets);
 
     document.getElementById("manualScheduledDate").min = getTodayIsoDate();
 
@@ -3763,6 +3795,7 @@ initDriverMap();
 startDriverLocationListener();
 await loadDrivers();
 await loadJobs();
+await loadWallets();
   } catch (error) {
     console.error(error);
     driversList.innerHTML = `<div class="empty-state">Failed to load data.</div>`;
@@ -3798,6 +3831,145 @@ async function getDriverDisplayName(driverId) {
     console.error("Failed driver lookup", error);
     return "Unknown driver";
   }
+}
+
+
+function compactAdminAddressSnippet(value) {
+  const clean = String(value || "").trim();
+  if (!clean) return "";
+
+  const firstPart = clean.split(",").map((part) => part.trim()).find(Boolean) || clean;
+  return firstPart.length <= 38 ? firstPart : `${firstPart.slice(0, 35).trim()}...`;
+}
+
+function getAdminJobById(jobId) {
+  const cleanJobId = String(jobId || "").trim();
+  if (!cleanJobId) return null;
+  return cachedJobs.find((job) => job.id === cleanJobId) || null;
+}
+
+function formatWalletTransactionType(type) {
+  const clean = String(type || "").trim().toLowerCase();
+  if (clean === "acceptance_fee") return "Acceptance fee";
+  if (clean === "refund") return "Refund";
+  if (clean === "admin_adjustment") return "Admin adjustment";
+  if (clean === "creator_commission") return "Creator commission";
+  return clean ? clean.replaceAll("_", " ") : "Wallet movement";
+}
+
+function formatSignedMoney(value) {
+  const amount = Number(value || 0);
+  if (amount >= 0) return `+£${amount.toFixed(2)}`;
+  return `-£${Math.abs(amount).toFixed(2)}`;
+}
+
+async function loadWallets() {
+  if (!walletsList) return;
+
+  walletsList.innerHTML = `<div class="empty-state">Loading wallet records...</div>`;
+
+  const snapshot = await getDocs(
+    query(collection(db, "walletTransactions"), orderBy("createdAt", "desc"))
+  );
+
+  cachedWalletTransactions = snapshot.docs.map((docSnap) => ({
+    ...docSnap.data(),
+    id: docSnap.id
+  }));
+
+  renderWallets();
+}
+
+function renderWallets() {
+  if (!walletsList) return;
+
+  const term = String(walletSearch?.value || "").trim().toLowerCase();
+
+  const drivers = [...cachedDrivers].sort((a, b) => {
+    return String(a.fullName || "").localeCompare(String(b.fullName || ""));
+  });
+
+  const visibleDrivers = drivers.filter((driver) => {
+    if (!term) return true;
+
+    const driverTransactions = cachedWalletTransactions.filter((tx) => tx.driverId === driver.id);
+
+    return [
+      driver.fullName,
+      driver.googleEmail,
+      driver.vehicleNumber,
+      ...driverTransactions.flatMap((tx) => {
+        const job = getAdminJobById(tx.jobId);
+        return [
+          tx.bookingGroupId,
+          tx.jobId,
+          tx.type,
+          tx.reason,
+          job?.pickupAddress,
+          job?.dropoffAddress
+        ];
+      })
+    ].some((value) => String(value || "").toLowerCase().includes(term));
+  });
+
+  if (!visibleDrivers.length) {
+    walletsList.innerHTML = `<div class="empty-state">No wallet records found.</div>`;
+    return;
+  }
+
+  walletsList.innerHTML = visibleDrivers.map((driver) => {
+    const transactions = cachedWalletTransactions
+      .filter((tx) => tx.driverId === driver.id)
+      .sort((a, b) => {
+        const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return bTime - aTime;
+      });
+
+    return `
+      <article class="job-card expanded" style="cursor:auto; margin-bottom:12px;">
+        <div class="job-header">
+          <div class="job-title">
+            <strong>${escapeHtml(driver.fullName || "Unknown driver")}</strong>
+            <span>${escapeHtml(driver.googleEmail || "-")}</span>
+          </div>
+          <div class="pill-row">
+            <span class="pill">Wallet £${Number(driver.walletBalance || 0).toFixed(2)}</span>
+            <span class="pill">${transactions.length} transaction${transactions.length === 1 ? "" : "s"}</span>
+            <span class="pill">Vehicle ${escapeHtml(driver.vehicleNumber || "-")}</span>
+          </div>
+        </div>
+
+        <div class="job-expanded" style="display:grid;">
+          <div class="job-section">
+            <strong>Transactions</strong>
+            <div class="job-life">
+              ${transactions.length ? transactions.map((tx) => {
+                const job = getAdminJobById(tx.jobId);
+                const route = job
+                  ? `${compactAdminAddressSnippet(job.pickupAddress)} → ${compactAdminAddressSnippet(job.dropoffAddress)}`
+                  : "No booking route attached";
+                const bookingLabel = tx.bookingGroupId || tx.jobId || "-";
+                const before = Number(tx.balanceBefore || 0).toFixed(2);
+                const after = Number(tx.balanceAfter || 0).toFixed(2);
+
+                return `
+                  <div class="job-life-entry">
+                    <div><strong>${escapeHtml(formatWalletTransactionType(tx.type))} ${escapeHtml(formatSignedMoney(tx.amount))}</strong></div>
+                    <div>Booking: ${escapeHtml(bookingLabel)}</div>
+                    <div>${escapeHtml(route)}</div>
+                    <div>${escapeHtml(tx.reason || "-")}</div>
+                    <div>Balance: £${before} → £${after}</div>
+                    <div>${escapeHtml(formatFirestoreTimestamp(tx.createdAt))}</div>
+                  </div>
+                `;
+              }).join("") : `<div class="job-life-entry"><div>No wallet transactions yet.</div></div>`}
+            </div>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
     async function expireOverduePendingBookings() {
@@ -3894,6 +4066,9 @@ async function loadJobs() {
     }));
 
     await renderJobs();
+    if (walletsList && cachedWalletTransactions.length) {
+      renderWallets();
+    }
   }, (error) => {
     console.error("Jobs listener failed", error);
     jobsList.innerHTML = `<div class="empty-state">Failed to load jobs.</div>`;
