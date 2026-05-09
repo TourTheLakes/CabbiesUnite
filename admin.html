@@ -2361,6 +2361,8 @@ async function refundDriverFee(driverId, amount, bookingGroupId, reason) {
     bookingGroupId,
     type: "refund",
     amount: Number(amount.toFixed(2)),
+    balanceBefore: currentWallet,
+    balanceAfter: nextWallet,
     reason,
     createdAt: serverTimestamp(),
     createdBy: normaliseEmail(auth.currentUser?.email)
@@ -4749,16 +4751,36 @@ const currentlyAcceptedDriverIds = new Set(
     .filter(Boolean)
 );
 
-const claimsForReassignment = [...existingClaims].sort((a, b) => {
-  const aCapacity = Number(a.passengerCapacity || 0);
-  const bCapacity = Number(b.passengerCapacity || 0);
+const sourceIsDriverCreated = String(primary.source || freshParts[0]?.source || "").toLowerCase() === "driver";
+const creatorDriverId = String(primary.createdByDriverId || freshParts[0]?.createdByDriverId || "").trim();
 
-  if (aCapacity !== bCapacity) {
-    return aCapacity - bCapacity;
-  }
+const claimsForReassignment = [...existingClaims]
+  .filter((claim) => {
+    const claimDriverId = String(claim.driverId || "").trim();
+    const claimFee = Number(claim.feeCharged || 0);
 
-  return Number(a.claimedAt || 0) - Number(b.claimedAt || 0);
-});
+    if (
+      sourceIsDriverCreated &&
+      creatorDriverId &&
+      claimDriverId === creatorDriverId &&
+      !currentlyAcceptedDriverIds.has(claimDriverId) &&
+      claimFee <= 0
+    ) {
+      return false;
+    }
+
+    return true;
+  })
+  .sort((a, b) => {
+    const aCapacity = Number(a.passengerCapacity || 0);
+    const bCapacity = Number(b.passengerCapacity || 0);
+
+    if (aCapacity !== bCapacity) {
+      return aCapacity - bCapacity;
+    }
+
+    return Number(a.claimedAt || 0) - Number(b.claimedAt || 0);
+  });
 
 for (const claim of claimsForReassignment) {
   let matchedPart = null;
@@ -4866,11 +4888,14 @@ for (const assignment of assignments) {
   const requiredFee = Number(calculateDriverFeeFromJobValue(assignment.part.vehiclePrice).toFixed(2));
 
   if (wasAlreadyAccepted || requiredFee <= 0) {
+    const existingFeeRaw = Number(assignment.claim.feeCharged);
+    const existingFee = Number.isFinite(existingFeeRaw) ? existingFeeRaw : requiredFee;
+
     walletCheckedAssignments.push({
       ...assignment,
       claim: {
         ...assignment.claim,
-        feeCharged: Number(assignment.claim.feeCharged || requiredFee || 0)
+        feeCharged: existingFee
       },
       recharge: null
     });
@@ -5000,6 +5025,8 @@ assignments.forEach(({ claim, part, recharge }) => {
       }
     : claim;
 
+  const assignedFeeAmount = Number(Number(chargedClaim.feeCharged || 0).toFixed(2));
+
   const assignmentClaimChain = rechargeResult
     ? [...existingClaims, chargedClaim]
     : existingClaims;
@@ -5019,11 +5046,11 @@ assignments.forEach(({ claim, part, recharge }) => {
     claimChain: assignmentClaimChain,
 
     status: "accepted",
-    feeCharged: true,
-    acceptanceFeeApplied: true,
-    acceptanceFeeAmount: Number(chargedClaim.feeCharged || part.effectiveFee || 0),
-    feeChargedAmount: Number(chargedClaim.feeCharged || part.effectiveFee || 0),
-    feeChargedAt: Number(chargedClaim.claimedAt || Date.now()),
+    feeCharged: assignedFeeAmount > 0,
+    acceptanceFeeApplied: assignedFeeAmount > 0,
+    acceptanceFeeAmount: assignedFeeAmount,
+    feeChargedAmount: assignedFeeAmount,
+    feeChargedAt: assignedFeeAmount > 0 ? Number(chargedClaim.claimedAt || Date.now()) : 0,
 
     createdAt: serverTimestamp(),
     createdBy: normaliseEmail(auth.currentUser?.email),
@@ -5085,10 +5112,12 @@ await batch.commit();
     for (const item of removedClaims) {
   const claim = item.claim;
 
-  if (!item.noRefund) {
+  const refundAmount = Number(Number(claim.feeCharged || 0).toFixed(2));
+
+  if (!item.noRefund && refundAmount > 0) {
     await refundDriverFee(
       claim.driverId,
-      calculateDriverFeeFromJobValue(primary.totalPrice),
+      refundAmount,
       primary.groupId,
       item.reason
     );
