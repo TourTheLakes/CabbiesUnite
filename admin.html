@@ -2444,6 +2444,16 @@ function getOrderedClaims(parts) {
   function enrichClaim(rawClaim, part) {
     const driverId = String(rawClaim.driverId || "").trim();
     const cachedDriver = getCachedDriver(driverId);
+    const isDriverCreatedCreator =
+      String(part?.source || "").toLowerCase() === "driver" &&
+      String(part?.createdByDriverId || "").trim() === driverId;
+
+    const rawFee = Number(
+      rawClaim.feeCharged ??
+      part?.feeChargedAmount ??
+      part?.effectiveFee ??
+      0
+    );
 
     return {
       ...rawClaim,
@@ -2463,12 +2473,7 @@ function getOrderedClaims(parts) {
       jobId: rawClaim.jobId || part?.id || "",
       sourceJobId: rawClaim.sourceJobId || part?.id || "",
       claimedAt: Number(rawClaim.claimedAt || part?.feeChargedAt || part?.updatedAt?.toMillis?.() || Date.now()),
-      feeCharged: Number(
-        rawClaim.feeCharged ??
-        part?.feeChargedAmount ??
-        part?.effectiveFee ??
-        0
-      )
+      feeCharged: isDriverCreatedCreator ? 0 : (Number.isFinite(rawFee) ? rawFee : 0)
     };
   }
 
@@ -2501,7 +2506,7 @@ function getOrderedClaims(parts) {
     }
   });
 
-  claims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
+  claims.sort((a, b) => Number(b.claimedAt || 0) - Number(a.claimedAt || 0));
 
   const seenDrivers = new Set();
   const uniqueClaims = [];
@@ -2514,6 +2519,8 @@ function getOrderedClaims(parts) {
     seenDrivers.add(driverId);
     uniqueClaims.push(claim);
   });
+
+  uniqueClaims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
 
   return uniqueClaims;
 }
@@ -4753,19 +4760,47 @@ const currentlyAcceptedDriverIds = new Set(
 
 const sourceIsDriverCreated = String(primary.source || freshParts[0]?.source || "").toLowerCase() === "driver";
 const creatorDriverId = String(primary.createdByDriverId || freshParts[0]?.createdByDriverId || "").trim();
+const latestReturnToWallByDriver = new Map();
+
+freshParts.forEach((part) => {
+  const lifecycle = Array.isArray(part.lifecycle) ? part.lifecycle : [];
+  lifecycle.forEach((entry) => {
+    const driverId = String(entry?.driverId || "").trim();
+    if (!driverId) return;
+    if (String(entry?.event || "").toLowerCase() !== "returned_to_wall") return;
+
+    const atMs = Date.parse(String(entry?.at || "")) || 0;
+    const previous = latestReturnToWallByDriver.get(driverId);
+    if (!previous || atMs >= previous.atMs) {
+      latestReturnToWallByDriver.set(driverId, {
+        atMs,
+        selfCreatedReturn: Boolean(entry?.selfCreatedReturn),
+        feeRefunded: Boolean(entry?.feeRefunded)
+      });
+    }
+  });
+});
 
 const claimsForReassignment = [...existingClaims]
   .filter((claim) => {
     const claimDriverId = String(claim.driverId || "").trim();
+    const isCurrentlyAccepted = currentlyAcceptedDriverIds.has(claimDriverId);
 
     // Driver-created creator privilege is fee exemption only.
-    // It must not become automatic admin reassignment after another driver has held/released/been dethroned.
+    // It must never become automatic reassignment from the wall.
     if (
       sourceIsDriverCreated &&
       creatorDriverId &&
       claimDriverId === creatorDriverId &&
-      !currentlyAcceptedDriverIds.has(claimDriverId)
+      !isCurrentlyAccepted
     ) {
+      return false;
+    }
+
+    // A voluntary return-to-wall is a release of diary ownership.
+    // The driver may manually reclaim later, but admin amendment must not auto-pull it back.
+    const latestReturn = latestReturnToWallByDriver.get(claimDriverId);
+    if (latestReturn && !latestReturn.feeRefunded && !isCurrentlyAccepted) {
       return false;
     }
 
@@ -5028,7 +5063,8 @@ assignments.forEach(({ claim, part, recharge }) => {
       }
     : claim;
 
-  const assignedFeeAmount = Number(Number(chargedClaim.feeCharged || 0).toFixed(2));
+  const assignedFeeRaw = Number(chargedClaim.feeCharged ?? 0);
+  const assignedFeeAmount = Number(Number(Number.isFinite(assignedFeeRaw) ? assignedFeeRaw : 0).toFixed(2));
 
   const assignmentClaimChain = rechargeResult
     ? [...existingClaims, chargedClaim]
