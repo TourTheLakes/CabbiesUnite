@@ -2424,6 +2424,41 @@ function buildAcceptanceFeeRechargeTransaction(batch, driverWallet, amount, book
   };
 }
 
+function buildAcceptanceFeeRefundTransaction(batch, driverWallet, amount, bookingGroupId, bookingId, reason) {
+  const cleanAmount = Number(Number(amount || 0).toFixed(2));
+  if (!driverWallet || !driverWallet.ref || cleanAmount <= 0) return null;
+
+  const balanceBefore = Number(Number(driverWallet.walletBalance || 0).toFixed(2));
+  const balanceAfter = Number((balanceBefore + cleanAmount).toFixed(2));
+  const walletTxRef = doc(collection(db, "walletTransactions"));
+
+  batch.update(driverWallet.ref, {
+    walletBalance: balanceAfter,
+    updatedAt: serverTimestamp(),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  });
+
+  batch.set(walletTxRef, {
+    driverId: driverWallet.id,
+    bookingGroupId,
+    jobId: bookingId || "",
+    type: "refund",
+    amount: cleanAmount,
+    balanceBefore,
+    balanceAfter,
+    reason,
+    createdAt: serverTimestamp(),
+    createdBy: normaliseEmail(auth.currentUser?.email)
+  });
+
+  return {
+    feeAmount: cleanAmount,
+    balanceBefore,
+    balanceAfter,
+    walletTransactionId: walletTxRef.id
+  };
+}
+
 function buildAdminFeeOverrideState(primary) {
   return {
     applied: Boolean(primary.feeOverrideApplied),
@@ -3378,8 +3413,8 @@ const basePayload = {
   source: "admin",
   customerName: data.customerName,
   customerPhoneOriginal: data.customerPhone,
-  customerPhonePreferred: data.phoneConfirmed === "yes" ? data.customerPhone : data.preferredPhone,
-  usePreferredContact: data.phoneConfirmed === "no" ? Boolean(data.preferredPhone) : true,
+  customerPhonePreferred: data.phoneConfirmed === "no" ? data.preferredPhone : "",
+  usePreferredContact: data.phoneConfirmed === "no" ? Boolean(data.preferredPhone) : false,
   customerPhoneVerified: true,
   pickupAddress: data.pickupAddress,
   dropoffAddress: data.dropoffAddress,
@@ -4760,6 +4795,7 @@ const currentlyAcceptedDriverIds = new Set(
 
 const sourceIsDriverCreated = String(primary.source || freshParts[0]?.source || "").toLowerCase() === "driver";
 const creatorDriverId = String(primary.createdByDriverId || freshParts[0]?.createdByDriverId || "").trim();
+const groupHasReenteredPublicWallAfterCreatorLoss = freshParts.some((part) => Boolean(part.hasReenteredPublicWallAfterCreatorLoss));
 const latestReturnToWallByDriver = new Map();
 
 freshParts.forEach((part) => {
@@ -4792,7 +4828,8 @@ const claimsForReassignment = [...existingClaims]
       sourceIsDriverCreated &&
       creatorDriverId &&
       claimDriverId === creatorDriverId &&
-      !isCurrentlyAccepted
+      !isCurrentlyAccepted &&
+      (groupHasReenteredPublicWallAfterCreatorLoss || latestReturnToWallByDriver.has(claimDriverId))
     ) {
       return false;
     }
@@ -4919,21 +4956,88 @@ const walletRechargePlans = [];
 
 for (const assignment of assignments) {
   const claimDriverId = String(assignment.claim.driverId || "").trim();
+  const creatorDriverId = String(primary.createdByDriverId || freshParts[0].createdByDriverId || "").trim();
+  const isCreatorClaim = claimDriverId && claimDriverId === creatorDriverId;
   const wasAlreadyAccepted = currentlyAcceptedDriverIds.has(claimDriverId);
-  const requiredFee = Number(calculateDriverFeeFromJobValue(assignment.part.vehiclePrice).toFixed(2));
+  const requiredFee = isCreatorClaim ? 0 : Number(calculateDriverFeeFromJobValue(assignment.part.vehiclePrice).toFixed(2));
+  const existingFeeRaw = Number(assignment.claim.feeCharged);
+  const existingFee = Number.isFinite(existingFeeRaw) ? Number(existingFeeRaw.toFixed(2)) : 0;
 
-  if (wasAlreadyAccepted || requiredFee <= 0) {
-    const existingFeeRaw = Number(assignment.claim.feeCharged);
-    const existingFee = Number.isFinite(existingFeeRaw) ? existingFeeRaw : requiredFee;
-
+  if (isCreatorClaim || requiredFee <= 0) {
     walletCheckedAssignments.push({
       ...assignment,
       claim: {
         ...assignment.claim,
-        feeCharged: existingFee
+        feeCharged: 0
       },
-      recharge: null
+      recharge: null,
+      feeRefund: null
     });
+    continue;
+  }
+
+  if (wasAlreadyAccepted) {
+    const feeDifference = Number((requiredFee - existingFee).toFixed(2));
+
+    if (feeDifference === 0) {
+      walletCheckedAssignments.push({
+        ...assignment,
+        claim: {
+          ...assignment.claim,
+          feeCharged: requiredFee
+        },
+        recharge: null,
+        feeRefund: null
+      });
+      continue;
+    }
+
+    const driverWallet = await getDriverWalletSnapshotForFee(claimDriverId);
+    const walletBalance = Number(driverWallet?.walletBalance || 0);
+
+    if (feeDifference > 0 && (!driverWallet || walletBalance < feeDifference)) {
+      removedClaims.push({
+        claim: assignment.claim,
+        reason: `Could not retain booking after amendment because wallet balance is insufficient for the increased fee. Required £${feeDifference.toFixed(2)}, available £${walletBalance.toFixed(2)}.`
+      });
+      continue;
+    }
+
+    const adjustedClaim = {
+      ...assignment.claim,
+      feeCharged: requiredFee
+    };
+
+    if (feeDifference > 0) {
+      const rechargePlan = {
+        driverWallet,
+        amount: feeDifference,
+        bookingGroupId: primary.groupId,
+        reason: "Acceptance fee difference charged after amendment retention."
+      };
+
+      walletCheckedAssignments.push({
+        ...assignment,
+        claim: adjustedClaim,
+        recharge: rechargePlan,
+        feeRefund: null
+      });
+    } else {
+      const refundPlan = {
+        driverWallet,
+        amount: Math.abs(feeDifference),
+        bookingGroupId: primary.groupId,
+        reason: "Acceptance fee difference refunded after amendment retention."
+      };
+
+      walletCheckedAssignments.push({
+        ...assignment,
+        claim: adjustedClaim,
+        recharge: null,
+        feeRefund: refundPlan
+      });
+    }
+
     continue;
   }
 
@@ -4969,7 +5073,8 @@ for (const assignment of assignments) {
   walletCheckedAssignments.push({
     ...assignment,
     claim: rechargedClaim,
-    recharge: rechargePlan
+    recharge: rechargePlan,
+    feeRefund: null
   });
 }
 
@@ -4987,9 +5092,9 @@ walletCheckedAssignments.forEach((assignment) => assignments.push(assignment));
   creatorCommissionPaidAt: freshParts[0].creatorCommissionPaidAt || primary.creatorCommissionPaidAt || null,
 
   customerName: updated.customerName,
-  customerPhoneOriginal: updated.customerPhoneOriginal || primary.customerPhoneOriginal || freshParts[0].customerPhoneOriginal || "",
-  customerPhonePreferred: updated.customerPhonePreferred || primary.customerPhonePreferred || freshParts[0].customerPhonePreferred || updated.customerPhoneOriginal || "",
-  usePreferredContact: updated.usePreferredContact ?? primary.usePreferredContact ?? freshParts[0].usePreferredContact ?? Boolean(updated.customerPhonePreferred),
+  customerPhoneOriginal: updated.customerPhoneOriginal ?? primary.customerPhoneOriginal ?? freshParts[0].customerPhoneOriginal ?? "",
+  customerPhonePreferred: updated.customerPhonePreferred ?? primary.customerPhonePreferred ?? freshParts[0].customerPhonePreferred ?? "",
+  usePreferredContact: updated.usePreferredContact ?? primary.usePreferredContact ?? freshParts[0].usePreferredContact ?? false,
   customerPhoneVerified: primary.customerPhoneVerified ?? freshParts[0].customerPhoneVerified ?? false,
   notes: updated.notes,
   pickupAddress: updated.pickupAddress,
@@ -5040,7 +5145,7 @@ freshParts.forEach((oldPart) => {
 });
 
 // 1. Recreate assigned parts for compatible existing claimants
-assignments.forEach(({ claim, part, recharge }) => {
+assignments.forEach(({ claim, part, recharge, feeRefund }) => {
   const newRef = doc(collection(db, "jobs"));
   const rechargeResult = recharge
     ? buildAcceptanceFeeRechargeTransaction(
@@ -5053,13 +5158,24 @@ assignments.forEach(({ claim, part, recharge }) => {
       )
     : null;
 
+  const feeRefundResult = feeRefund
+    ? buildAcceptanceFeeRefundTransaction(
+        batch,
+        feeRefund.driverWallet,
+        feeRefund.amount,
+        feeRefund.bookingGroupId,
+        newRef.id,
+        feeRefund.reason
+      )
+    : null;
+
   const chargedClaim = rechargeResult
     ? {
         ...claim,
         jobId: newRef.id,
         sourceJobId: newRef.id,
         claimedAt: Date.now(),
-        feeCharged: rechargeResult.feeAmount
+        feeCharged: Number(claim.feeCharged ?? rechargeResult.feeAmount ?? 0)
       }
     : claim;
 
