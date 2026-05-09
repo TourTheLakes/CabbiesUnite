@@ -4757,14 +4757,14 @@ const creatorDriverId = String(primary.createdByDriverId || freshParts[0]?.creat
 const claimsForReassignment = [...existingClaims]
   .filter((claim) => {
     const claimDriverId = String(claim.driverId || "").trim();
-    const claimFee = Number(claim.feeCharged || 0);
 
+    // Driver-created creator privilege is fee exemption only.
+    // It must not become automatic admin reassignment after another driver has held/released/been dethroned.
     if (
       sourceIsDriverCreated &&
       creatorDriverId &&
       claimDriverId === creatorDriverId &&
-      !currentlyAcceptedDriverIds.has(claimDriverId) &&
-      claimFee <= 0
+      !currentlyAcceptedDriverIds.has(claimDriverId)
     ) {
       return false;
     }
@@ -4952,7 +4952,10 @@ walletCheckedAssignments.forEach((assignment) => assignments.push(assignment));
   creatorCommissionPaidAt: freshParts[0].creatorCommissionPaidAt || primary.creatorCommissionPaidAt || null,
 
   customerName: updated.customerName,
-  customerPhonePreferred: updated.customerPhonePreferred,
+  customerPhoneOriginal: updated.customerPhoneOriginal || primary.customerPhoneOriginal || freshParts[0].customerPhoneOriginal || "",
+  customerPhonePreferred: updated.customerPhonePreferred || primary.customerPhonePreferred || freshParts[0].customerPhonePreferred || updated.customerPhoneOriginal || "",
+  usePreferredContact: updated.usePreferredContact ?? primary.usePreferredContact ?? freshParts[0].usePreferredContact ?? Boolean(updated.customerPhonePreferred),
+  customerPhoneVerified: primary.customerPhoneVerified ?? freshParts[0].customerPhoneVerified ?? false,
   notes: updated.notes,
   pickupAddress: updated.pickupAddress,
   dropoffAddress: updated.dropoffAddress,
@@ -5092,6 +5095,10 @@ rebuilt.parts
 
       status: "pending",
       feeCharged: false,
+      acceptanceFeeApplied: false,
+      acceptanceFeeAmount: 0,
+      feeChargedAmount: 0,
+      feeChargedAt: 0,
 
       createdAt: serverTimestamp(),
       createdBy: normaliseEmail(auth.currentUser?.email),
