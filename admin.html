@@ -2851,12 +2851,16 @@ function formatLifecycleTimestamp(value) {
       return sum + (Number.isFinite(paid) ? paid : 0);
     }, 0);
 
+  const removedClaimPaidFee = Number(claim.feeCharged || claim.feeChargedAmount || claim.acceptanceFeeAmount || 0);
+
+if (!item.noRefund && Number.isFinite(removedClaimPaidFee) && removedClaimPaidFee > 0) {
   await refundDriverFee(
-    driverId,
-    Number(refundAmountForDriver.toFixed(2)),
+    claim.driverId,
+    Number(removedClaimPaidFee.toFixed(2)),
     primary.groupId,
-    reason
+    item.reason
   );
+}
 
   await createDriverNotification(driverId, {
     type: "job_dethroned",
@@ -5411,24 +5415,59 @@ return;
       if (!confirmed) return;
 
       try {
-        for (const part of booking.parts) {
-          const nextLifecycle = [
-            ...(Array.isArray(part.lifecycle) ? part.lifecycle : []),
-            buildLifecycleEntry("cancelled", `Admin cancelled booking: ${trimmedReason}`)
-          ];
+  const cancellationRefundsByDriver = new Map();
 
-          await updateDoc(doc(db, "jobs", part.id), {
-            status: "cancelled",
-            cancellationReason: trimmedReason,
-            acceptedByDriverId: "",
-            feeCharged: false,
-            lifecycle: nextLifecycle,
-            updatedAt: serverTimestamp(),
-            lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-          });
-        }
+  booking.parts.forEach((part) => {
+    const driverId = String(part.acceptedByDriverId || "").trim();
+    if (!driverId) return;
 
-        await loadJobs();
+    const paidFee = Number(part.feeChargedAmount || part.acceptanceFeeAmount || 0);
+    if (!Number.isFinite(paidFee) || paidFee <= 0) return;
+
+    const halfRefund = Number((paidFee * 0.5).toFixed(2));
+    const current = cancellationRefundsByDriver.get(driverId) || 0;
+
+    cancellationRefundsByDriver.set(
+      driverId,
+      Number((current + halfRefund).toFixed(2))
+    );
+  });
+
+  for (const part of booking.parts) {
+    const nextLifecycle = [
+      ...(Array.isArray(part.lifecycle) ? part.lifecycle : []),
+      buildLifecycleEntry("cancelled", `Admin cancelled booking: ${trimmedReason}`)
+    ];
+
+    await updateDoc(doc(db, "jobs", part.id), {
+      status: "cancelled",
+      cancellationReason: trimmedReason,
+      acceptedByDriverId: "",
+      feeCharged: false,
+      feeRefunded: true,
+      lifecycle: nextLifecycle,
+      updatedAt: serverTimestamp(),
+      lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+    });
+  }
+
+  for (const [driverId, refundAmount] of cancellationRefundsByDriver.entries()) {
+    await refundDriverFee(
+      driverId,
+      refundAmount,
+      booking.primary.groupId,
+      `50% refund after admin cancellation: ${trimmedReason}`
+    );
+
+    await createDriverNotification(driverId, {
+      type: "wallet_adjusted",
+      title: "Booking cancelled",
+      message: `Booking ${booking.primary.groupId} was cancelled. A 50% acceptance fee refund of £${refundAmount.toFixed(2)} has been credited to your wallet.`,
+      bookingGroupId: booking.primary.groupId
+    });
+  }
+
+  await loadJobs();
       } catch (err) {
         console.error("Failed to cancel booking", err);
       }
