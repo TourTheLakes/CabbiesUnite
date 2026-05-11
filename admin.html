@@ -2843,25 +2843,29 @@ function formatLifecycleTimestamp(value) {
     )
   ];
 
-  const feeOverride = buildAdminFeeOverrideState(primary);
-  const refundAmountPerDriver = calculateDriverFeeFromJobValue(primary.totalPrice, feeOverride);
-
   for (const driverId of acceptedDriverIds) {
-    await refundDriverFee(
-      driverId,
-      refundAmountPerDriver,
-      primary.groupId,
-      reason
-    );
+  const refundAmountForDriver = booking.parts
+    .filter((part) => String(part.acceptedByDriverId || "").trim() === driverId)
+    .reduce((sum, part) => {
+      const paid = Number(part.feeChargedAmount || part.acceptanceFeeAmount || 0);
+      return sum + (Number.isFinite(paid) ? paid : 0);
+    }, 0);
 
-    await createDriverNotification(driverId, {
-      type: "job_dethroned",
-      title: "Booking changed",
-      message: `Booking ${primary.groupId} has changed. Your fee has been returned and the booking is back on the wall.`,
-      bookingGroupId: primary.groupId,
-      reason
-    });
-  }
+  await refundDriverFee(
+    driverId,
+    Number(refundAmountForDriver.toFixed(2)),
+    primary.groupId,
+    reason
+  );
+
+  await createDriverNotification(driverId, {
+    type: "job_dethroned",
+    title: "Booking changed",
+    message: `Booking ${primary.groupId} has changed. Your actual paid fee has been returned and the booking is back on the wall.`,
+    bookingGroupId: primary.groupId,
+    reason
+  });
+}
 
   for (const part of booking.parts) {
     const nextLifecycle = getSafeLifecycle(part.lifecycle);
