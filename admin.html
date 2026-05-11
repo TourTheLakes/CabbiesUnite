@@ -1143,7 +1143,7 @@
           <h2>Penalties</h2>
           <p>Penalty inspection will be layered after job handling is in place.</p>
         </div>
-        <div class="section-placeholder">Penalties view is intentionally reserved for the next penalty-management layer.</div>
+        <div class="section-placeholder">Penalties view not yet built in this first pass.</div>
       </section>
 
       <section id="section-documents" class="hidden">
@@ -1151,7 +1151,7 @@
           <h2>Documents</h2>
           <p>Expiry monitoring is already included in flat records. Document management can be layered later.</p>
         </div>
-        <div class="section-placeholder">Documents view is intentionally reserved; expiry monitoring is already active in driver records.</div>
+        <div class="section-placeholder">Documents section not yet built in this first pass.</div>
       </section>
 
       <section id="section-settings" class="hidden">
@@ -1159,7 +1159,7 @@
           <h2>Settings</h2>
           <p>System settings will be layered later.</p>
         </div>
-        <div class="section-placeholder">Settings view is intentionally reserved for future platform configuration.</div>
+        <div class="section-placeholder">Settings section not yet built in this first pass.</div>
       </section>
     </main>
   </section>
@@ -1921,6 +1921,139 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
     renderManualQuote(null);
     return null;
   }
+}
+
+  async function recalculateSinglePartBookingUpdate(primary, updated) {
+  const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
+  const distanceMiles = applyDistanceBuffer(rawMiles);
+  const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+
+  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
+
+  const activeFleet = getActiveFleet(cachedDrivers);
+
+  const vehiclePlan = solveVehiclePlan(
+    updated.passengerCount,
+    updated.luggageSize,
+    updated.luggageCount,
+    activeFleet
+  );
+
+  if (!vehiclePlan) {
+    throw new Error("No active vehicle combination can fulfil this amended booking.");
+  }
+
+  if (vehiclePlan.vehicles.length !== 1) {
+    throw new Error("This amended booking now requires multiple vehicles. Compound recalculation is not wired yet.");
+  }
+
+  const vehicle = vehiclePlan.vehicles[0];
+
+  const vehiclePrice =
+    distanceMiles <= 3
+      ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
+      : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
+
+  const isShortJob = distanceMiles <= 3;
+
+  let phOnlyUntil = 0;
+
+  if (isShortJob) {
+    if (updated.isAsap) {
+      phOnlyUntil = Date.now() + (5 * 60 * 1000);
+    } else {
+      const wallExpiresAt = getWallExpiresAt(false, new Date(scheduledAt).getTime(), Date.now());
+      phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
+    }
+  }
+
+  return {
+    scheduledAt,
+    distanceMiles: Number(distanceMiles.toFixed(2)),
+    hcPrice: Number(hcPrice.toFixed(2)),
+    phPrice: Number(phPrice.toFixed(2)),
+    liveQuotedPrice: Number(liveQuotedPrice.toFixed(2)),
+    quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
+    totalPrice: Number(vehiclePrice.toFixed(2)),
+    vehiclePrice: Number(vehiclePrice.toFixed(2)),
+    passengerCount: vehicle.passengers,
+    luggageSize: vehicle.luggageSize,
+    requiredSeats: vehicle.capacity,
+    compound: false,
+    totalParts: 1,
+    partIndex: 1,
+    isShortJob: isShortJob,
+    phOnlyUntil: phOnlyUntil
+  };
+}
+
+  async function expandBookingToCompound(primary, updated) {
+  const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
+  const distanceMiles = applyDistanceBuffer(rawMiles);
+  const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+
+  const activeFleet = getActiveFleet(cachedDrivers);
+
+  const plan = solveVehiclePlan(
+    updated.passengerCount,
+    updated.luggageSize,
+    updated.luggageCount,
+    activeFleet
+  );
+
+  if (!plan || plan.vehicles.length <= 1) {
+    return null;
+  }
+
+  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
+  const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
+
+  const parts = plan.vehicles.map((vehicle, index) => {
+    const vehiclePrice =
+      distanceMiles <= 3
+        ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
+        : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
+
+    return {
+      partIndex: index + 1,
+      totalParts: plan.vehicles.length,
+      passengerCount: vehicle.passengers,
+      luggageSize: vehicle.luggageSize,
+      luggageCount: vehicle.luggageCount,
+      requiredSeats: vehicle.capacity,
+      vehiclePrice: Number(vehiclePrice.toFixed(2))
+    };
+  });
+
+  const isShortJob = distanceMiles <= 3;
+
+  let phOnlyUntil = 0;
+
+  if (isShortJob) {
+    if (updated.isAsap) {
+      phOnlyUntil = Date.now() + (5 * 60 * 1000);
+    } else {
+      const wallExpiresAt = getWallExpiresAt(false, new Date(scheduledAt).getTime(), Date.now());
+      phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
+    }
+  }
+
+  return {
+    scheduledAt,
+    distanceMiles: Number(distanceMiles.toFixed(2)),
+    hcPrice: Number(hcPrice.toFixed(2)),
+    phPrice: Number(phPrice.toFixed(2)),
+    liveQuotedPrice: Number(liveQuotedPrice.toFixed(2)),
+    quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
+    totalPrice: Number(parts.reduce((sum, p) => sum + p.vehiclePrice, 0).toFixed(2)),
+    isShortJob: isShortJob,
+    phOnlyUntil: phOnlyUntil,
+    compound: true,
+    parts
+  };
 }
 
   async function rebuildBookingGroupFromTotals(booking, updated) {
@@ -3157,34 +3290,6 @@ function validateManualBookingData(data) {
       }
     }
 
-    function normalisePreferredContactPayload(originalPhone, preferredPhone, phoneConfirmed) {
-  const original = String(originalPhone || "").trim();
-  const preferred = String(preferredPhone || "").trim();
-  const confirmed = String(phoneConfirmed || "").trim().toLowerCase();
-
-  if (confirmed === "yes") {
-    return {
-      customerPhonePreferred: "",
-      usePreferredContact: false,
-      customerPhoneVerified: true
-    };
-  }
-
-  if (!preferred || preferred === original) {
-    return {
-      customerPhonePreferred: "",
-      usePreferredContact: false,
-      customerPhoneVerified: false
-    };
-  }
-
-  return {
-    customerPhonePreferred: preferred,
-    usePreferredContact: true,
-    customerPhoneVerified: false
-  };
-}
-
     async function createJobDocuments(data, quote) {
   const groupId = generateGroupId();
 
@@ -3209,7 +3314,9 @@ const basePayload = {
   source: "admin",
   customerName: data.customerName,
   customerPhoneOriginal: data.customerPhone,
-  ...normalisePreferredContactPayload(data.customerPhone, data.preferredPhone, data.phoneConfirmed),
+  customerPhonePreferred: data.phoneConfirmed === "yes" ? data.customerPhone : data.preferredPhone,
+  usePreferredContact: data.phoneConfirmed === "no" ? Boolean(data.preferredPhone) : true,
+  customerPhoneVerified: true,
   pickupAddress: data.pickupAddress,
   dropoffAddress: data.dropoffAddress,
   scheduledDate: data.scheduledDate,
@@ -3287,6 +3394,7 @@ const basePayload = {
   setManualBookingMessage("");
 
   const data = getManualBookingFormData();
+      console.log("MANUAL SUBMIT DATA", data);
   const validationError = validateManualBookingData(data);
 
   if (validationError) {
@@ -4760,7 +4868,6 @@ assignments.forEach(({ claim, part }) => {
 
     acceptedByDriverId: claim.driverId,
     acceptedDriverName: claim.driverName || "",
-    acceptedDriverEmail: claim.driverEmail || "",
     acceptedDriverType: claim.driverType || "",
     acceptedDriverCapacity: Number(claim.passengerCapacity || 0),
     acceptedDriverPetsAccepted: claim.petsAccepted || "",
@@ -4802,7 +4909,6 @@ rebuilt.parts
 
       acceptedByDriverId: "",
       acceptedDriverName: "",
-      acceptedDriverEmail: "",
       acceptedDriverType: "",
       acceptedDriverCapacity: 0,
       acceptedDriverPetsAccepted: "",
