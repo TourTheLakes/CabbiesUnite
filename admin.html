@@ -1143,7 +1143,7 @@
           <h2>Penalties</h2>
           <p>Penalty inspection will be layered after job handling is in place.</p>
         </div>
-        <div class="section-placeholder">Penalties view not yet built in this first pass.</div>
+        <div class="section-placeholder">Penalties view is intentionally reserved for the next penalty-management layer.</div>
       </section>
 
       <section id="section-documents" class="hidden">
@@ -1151,7 +1151,7 @@
           <h2>Documents</h2>
           <p>Expiry monitoring is already included in flat records. Document management can be layered later.</p>
         </div>
-        <div class="section-placeholder">Documents section not yet built in this first pass.</div>
+        <div class="section-placeholder">Documents view is intentionally reserved; expiry monitoring is already active in driver records.</div>
       </section>
 
       <section id="section-settings" class="hidden">
@@ -1159,7 +1159,7 @@
           <h2>Settings</h2>
           <p>System settings will be layered later.</p>
         </div>
-        <div class="section-placeholder">Settings section not yet built in this first pass.</div>
+        <div class="section-placeholder">Settings view is intentionally reserved for future platform configuration.</div>
       </section>
     </main>
   </section>
@@ -1923,139 +1923,6 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
   }
 }
 
-  async function recalculateSinglePartBookingUpdate(primary, updated) {
-  const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
-  const distanceMiles = applyDistanceBuffer(rawMiles);
-  const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
-
-  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
-  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
-  const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
-
-  const activeFleet = getActiveFleet(cachedDrivers);
-
-  const vehiclePlan = solveVehiclePlan(
-    updated.passengerCount,
-    updated.luggageSize,
-    updated.luggageCount,
-    activeFleet
-  );
-
-  if (!vehiclePlan) {
-    throw new Error("No active vehicle combination can fulfil this amended booking.");
-  }
-
-  if (vehiclePlan.vehicles.length !== 1) {
-    throw new Error("This amended booking now requires multiple vehicles. Compound recalculation is not wired yet.");
-  }
-
-  const vehicle = vehiclePlan.vehicles[0];
-
-  const vehiclePrice =
-    distanceMiles <= 3
-      ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
-      : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
-
-  const isShortJob = distanceMiles <= 3;
-
-  let phOnlyUntil = 0;
-
-  if (isShortJob) {
-    if (updated.isAsap) {
-      phOnlyUntil = Date.now() + (5 * 60 * 1000);
-    } else {
-      const wallExpiresAt = getWallExpiresAt(false, new Date(scheduledAt).getTime(), Date.now());
-      phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
-    }
-  }
-
-  return {
-    scheduledAt,
-    distanceMiles: Number(distanceMiles.toFixed(2)),
-    hcPrice: Number(hcPrice.toFixed(2)),
-    phPrice: Number(phPrice.toFixed(2)),
-    liveQuotedPrice: Number(liveQuotedPrice.toFixed(2)),
-    quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
-    totalPrice: Number(vehiclePrice.toFixed(2)),
-    vehiclePrice: Number(vehiclePrice.toFixed(2)),
-    passengerCount: vehicle.passengers,
-    luggageSize: vehicle.luggageSize,
-    requiredSeats: vehicle.capacity,
-    compound: false,
-    totalParts: 1,
-    partIndex: 1,
-    isShortJob: isShortJob,
-    phOnlyUntil: phOnlyUntil
-  };
-}
-
-  async function expandBookingToCompound(primary, updated) {
-  const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
-  const distanceMiles = applyDistanceBuffer(rawMiles);
-  const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
-
-  const activeFleet = getActiveFleet(cachedDrivers);
-
-  const plan = solveVehiclePlan(
-    updated.passengerCount,
-    updated.luggageSize,
-    updated.luggageCount,
-    activeFleet
-  );
-
-  if (!plan || plan.vehicles.length <= 1) {
-    return null;
-  }
-
-  const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
-  const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
-  const liveQuotedPrice = distanceMiles <= 3 ? phPrice : hcPrice;
-
-  const parts = plan.vehicles.map((vehicle, index) => {
-    const vehiclePrice =
-      distanceMiles <= 3
-        ? calculatePHPrice(distanceMiles, vehicle.passengers, scheduledAt)
-        : calculateHCPrice(distanceMiles, vehicle.passengers, scheduledAt);
-
-    return {
-      partIndex: index + 1,
-      totalParts: plan.vehicles.length,
-      passengerCount: vehicle.passengers,
-      luggageSize: vehicle.luggageSize,
-      luggageCount: vehicle.luggageCount,
-      requiredSeats: vehicle.capacity,
-      vehiclePrice: Number(vehiclePrice.toFixed(2))
-    };
-  });
-
-  const isShortJob = distanceMiles <= 3;
-
-  let phOnlyUntil = 0;
-
-  if (isShortJob) {
-    if (updated.isAsap) {
-      phOnlyUntil = Date.now() + (5 * 60 * 1000);
-    } else {
-      const wallExpiresAt = getWallExpiresAt(false, new Date(scheduledAt).getTime(), Date.now());
-      phOnlyUntil = wallExpiresAt - (10 * 60 * 1000);
-    }
-  }
-
-  return {
-    scheduledAt,
-    distanceMiles: Number(distanceMiles.toFixed(2)),
-    hcPrice: Number(hcPrice.toFixed(2)),
-    phPrice: Number(phPrice.toFixed(2)),
-    liveQuotedPrice: Number(liveQuotedPrice.toFixed(2)),
-    quotedPriceCurrent: Number(liveQuotedPrice.toFixed(2)),
-    totalPrice: Number(parts.reduce((sum, p) => sum + p.vehiclePrice, 0).toFixed(2)),
-    isShortJob: isShortJob,
-    phOnlyUntil: phOnlyUntil,
-    compound: true,
-    parts
-  };
-}
-
   async function rebuildBookingGroupFromTotals(booking, updated) {
   const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
   const distanceMiles = applyDistanceBuffer(rawMiles);
@@ -2361,102 +2228,10 @@ async function refundDriverFee(driverId, amount, bookingGroupId, reason) {
     bookingGroupId,
     type: "refund",
     amount: Number(amount.toFixed(2)),
-    balanceBefore: currentWallet,
-    balanceAfter: nextWallet,
     reason,
     createdAt: serverTimestamp(),
     createdBy: normaliseEmail(auth.currentUser?.email)
   });
-}
-
-async function getDriverWalletSnapshotForFee(driverId) {
-  const cleanDriverId = String(driverId || "").trim();
-  if (!cleanDriverId) return null;
-
-  const driverRef = doc(db, "drivers", cleanDriverId);
-  const snap = await getDoc(driverRef);
-
-  if (!snap.exists()) return null;
-
-  const data = snap.data() || {};
-
-  return {
-    ref: driverRef,
-    id: cleanDriverId,
-    fullName: data.fullName || "",
-    googleEmail: data.googleEmail || "",
-    walletBalance: Number(data.walletBalance || 0)
-  };
-}
-
-function buildAcceptanceFeeRechargeTransaction(batch, driverWallet, amount, bookingGroupId, bookingId, reason) {
-  const cleanAmount = Number(Number(amount || 0).toFixed(2));
-  if (!driverWallet || !driverWallet.ref || cleanAmount <= 0) return null;
-
-  const balanceBefore = Number(Number(driverWallet.walletBalance || 0).toFixed(2));
-  const balanceAfter = Number((balanceBefore - cleanAmount).toFixed(2));
-  const walletTxRef = doc(collection(db, "walletTransactions"));
-
-  batch.update(driverWallet.ref, {
-    walletBalance: balanceAfter,
-    updatedAt: serverTimestamp(),
-    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-  });
-
-  batch.set(walletTxRef, {
-    driverId: driverWallet.id,
-    bookingGroupId,
-    jobId: bookingId || "",
-    type: "acceptance_fee",
-    amount: -cleanAmount,
-    balanceBefore,
-    balanceAfter,
-    reason,
-    createdAt: serverTimestamp(),
-    createdBy: normaliseEmail(auth.currentUser?.email)
-  });
-
-  return {
-    feeAmount: cleanAmount,
-    balanceBefore,
-    balanceAfter,
-    walletTransactionId: walletTxRef.id
-  };
-}
-
-function buildAcceptanceFeeRefundTransaction(batch, driverWallet, amount, bookingGroupId, bookingId, reason) {
-  const cleanAmount = Number(Number(amount || 0).toFixed(2));
-  if (!driverWallet || !driverWallet.ref || cleanAmount <= 0) return null;
-
-  const balanceBefore = Number(Number(driverWallet.walletBalance || 0).toFixed(2));
-  const balanceAfter = Number((balanceBefore + cleanAmount).toFixed(2));
-  const walletTxRef = doc(collection(db, "walletTransactions"));
-
-  batch.update(driverWallet.ref, {
-    walletBalance: balanceAfter,
-    updatedAt: serverTimestamp(),
-    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
-  });
-
-  batch.set(walletTxRef, {
-    driverId: driverWallet.id,
-    bookingGroupId,
-    jobId: bookingId || "",
-    type: "refund",
-    amount: cleanAmount,
-    balanceBefore,
-    balanceAfter,
-    reason,
-    createdAt: serverTimestamp(),
-    createdBy: normaliseEmail(auth.currentUser?.email)
-  });
-
-  return {
-    feeAmount: cleanAmount,
-    balanceBefore,
-    balanceAfter,
-    walletTransactionId: walletTxRef.id
-  };
 }
 
 function buildAdminFeeOverrideState(primary) {
@@ -2479,16 +2254,6 @@ function getOrderedClaims(parts) {
   function enrichClaim(rawClaim, part) {
     const driverId = String(rawClaim.driverId || "").trim();
     const cachedDriver = getCachedDriver(driverId);
-    const isDriverCreatedCreator =
-      String(part?.source || "").toLowerCase() === "driver" &&
-      String(part?.createdByDriverId || "").trim() === driverId;
-
-    const rawFee = Number(
-      rawClaim.feeCharged ??
-      part?.feeChargedAmount ??
-      part?.effectiveFee ??
-      0
-    );
 
     return {
       ...rawClaim,
@@ -2508,7 +2273,12 @@ function getOrderedClaims(parts) {
       jobId: rawClaim.jobId || part?.id || "",
       sourceJobId: rawClaim.sourceJobId || part?.id || "",
       claimedAt: Number(rawClaim.claimedAt || part?.feeChargedAt || part?.updatedAt?.toMillis?.() || Date.now()),
-      feeCharged: isDriverCreatedCreator ? 0 : (Number.isFinite(rawFee) ? rawFee : 0)
+      feeCharged: Number(
+        rawClaim.feeCharged ??
+        part?.feeChargedAmount ??
+        part?.effectiveFee ??
+        0
+      )
     };
   }
 
@@ -2541,7 +2311,7 @@ function getOrderedClaims(parts) {
     }
   });
 
-  claims.sort((a, b) => Number(b.claimedAt || 0) - Number(a.claimedAt || 0));
+  claims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
 
   const seenDrivers = new Set();
   const uniqueClaims = [];
@@ -2554,8 +2324,6 @@ function getOrderedClaims(parts) {
     seenDrivers.add(driverId);
     uniqueClaims.push(claim);
   });
-
-  uniqueClaims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
 
   return uniqueClaims;
 }
@@ -3389,6 +3157,34 @@ function validateManualBookingData(data) {
       }
     }
 
+    function normalisePreferredContactPayload(originalPhone, preferredPhone, phoneConfirmed) {
+  const original = String(originalPhone || "").trim();
+  const preferred = String(preferredPhone || "").trim();
+  const confirmed = String(phoneConfirmed || "").trim().toLowerCase();
+
+  if (confirmed === "yes") {
+    return {
+      customerPhonePreferred: "",
+      usePreferredContact: false,
+      customerPhoneVerified: true
+    };
+  }
+
+  if (!preferred || preferred === original) {
+    return {
+      customerPhonePreferred: "",
+      usePreferredContact: false,
+      customerPhoneVerified: false
+    };
+  }
+
+  return {
+    customerPhonePreferred: preferred,
+    usePreferredContact: true,
+    customerPhoneVerified: false
+  };
+}
+
     async function createJobDocuments(data, quote) {
   const groupId = generateGroupId();
 
@@ -3413,9 +3209,7 @@ const basePayload = {
   source: "admin",
   customerName: data.customerName,
   customerPhoneOriginal: data.customerPhone,
-  customerPhonePreferred: data.phoneConfirmed === "no" ? data.preferredPhone : "",
-  usePreferredContact: data.phoneConfirmed === "no" ? Boolean(data.preferredPhone) : false,
-  customerPhoneVerified: true,
+  ...normalisePreferredContactPayload(data.customerPhone, data.preferredPhone, data.phoneConfirmed),
   pickupAddress: data.pickupAddress,
   dropoffAddress: data.dropoffAddress,
   scheduledDate: data.scheduledDate,
@@ -3493,7 +3287,6 @@ const basePayload = {
   setManualBookingMessage("");
 
   const data = getManualBookingFormData();
-      console.log("MANUAL SUBMIT DATA", data);
   const validationError = validateManualBookingData(data);
 
   if (validationError) {
@@ -4786,73 +4579,17 @@ const allAcceptedParts = acceptedSnapshot.docs.map((docSnap) => ({
 const assignments = [];
 const removedClaims = [];
 const usedPartIndexes = new Set();
-const currentlyAcceptedDriverIds = new Set(
-  freshParts
-    .filter((part) => String(part.status || "").toLowerCase() === "accepted")
-    .map((part) => String(part.acceptedByDriverId || "").trim())
-    .filter(Boolean)
-);
 
-const sourceIsDriverCreated = String(primary.source || freshParts[0]?.source || "").toLowerCase() === "driver";
-const creatorDriverId = String(primary.createdByDriverId || freshParts[0]?.createdByDriverId || "").trim();
-const groupHasReenteredPublicWallAfterCreatorLoss = freshParts.some((part) => Boolean(part.hasReenteredPublicWallAfterCreatorLoss));
-const latestReturnToWallByDriver = new Map();
+const claimsForReassignment = [...existingClaims].sort((a, b) => {
+  const aCapacity = Number(a.passengerCapacity || 0);
+  const bCapacity = Number(b.passengerCapacity || 0);
 
-freshParts.forEach((part) => {
-  const lifecycle = Array.isArray(part.lifecycle) ? part.lifecycle : [];
-  lifecycle.forEach((entry) => {
-    const driverId = String(entry?.driverId || "").trim();
-    if (!driverId) return;
-    if (String(entry?.event || "").toLowerCase() !== "returned_to_wall") return;
+  if (aCapacity !== bCapacity) {
+    return aCapacity - bCapacity;
+  }
 
-    const atMs = Date.parse(String(entry?.at || "")) || 0;
-    const previous = latestReturnToWallByDriver.get(driverId);
-    if (!previous || atMs >= previous.atMs) {
-      latestReturnToWallByDriver.set(driverId, {
-        atMs,
-        selfCreatedReturn: Boolean(entry?.selfCreatedReturn),
-        feeRefunded: Boolean(entry?.feeRefunded)
-      });
-    }
-  });
+  return Number(a.claimedAt || 0) - Number(b.claimedAt || 0);
 });
-
-const claimsForReassignment = [...existingClaims]
-  .filter((claim) => {
-    const claimDriverId = String(claim.driverId || "").trim();
-    const isCurrentlyAccepted = currentlyAcceptedDriverIds.has(claimDriverId);
-
-    // Driver-created creator privilege is fee exemption only.
-    // It must never become automatic reassignment from the wall.
-    if (
-      sourceIsDriverCreated &&
-      creatorDriverId &&
-      claimDriverId === creatorDriverId &&
-      !isCurrentlyAccepted &&
-      (groupHasReenteredPublicWallAfterCreatorLoss || latestReturnToWallByDriver.has(claimDriverId))
-    ) {
-      return false;
-    }
-
-    // A voluntary return-to-wall is a release of diary ownership.
-    // The driver may manually reclaim later, but admin amendment must not auto-pull it back.
-    const latestReturn = latestReturnToWallByDriver.get(claimDriverId);
-    if (latestReturn && !latestReturn.feeRefunded && !isCurrentlyAccepted) {
-      return false;
-    }
-
-    return true;
-  })
-  .sort((a, b) => {
-    const aCapacity = Number(a.passengerCapacity || 0);
-    const bCapacity = Number(b.passengerCapacity || 0);
-
-    if (aCapacity !== bCapacity) {
-      return aCapacity - bCapacity;
-    }
-
-    return Number(a.claimedAt || 0) - Number(b.claimedAt || 0);
-  });
 
 for (const claim of claimsForReassignment) {
   let matchedPart = null;
@@ -4951,136 +4688,6 @@ const rebuiltLifecycleBase = [
   groupLifecycleEntry
 ];
 
-const walletCheckedAssignments = [];
-const walletRechargePlans = [];
-
-for (const assignment of assignments) {
-  const claimDriverId = String(assignment.claim.driverId || "").trim();
-  const creatorDriverId = String(primary.createdByDriverId || freshParts[0].createdByDriverId || "").trim();
-  const isCreatorClaim = claimDriverId && claimDriverId === creatorDriverId;
-  const wasAlreadyAccepted = currentlyAcceptedDriverIds.has(claimDriverId);
-  const requiredFee = isCreatorClaim ? 0 : Number(calculateDriverFeeFromJobValue(assignment.part.vehiclePrice).toFixed(2));
-  const existingFeeRaw = Number(assignment.claim.feeCharged);
-  const existingFee = Number.isFinite(existingFeeRaw) ? Number(existingFeeRaw.toFixed(2)) : 0;
-
-  if (isCreatorClaim || requiredFee <= 0) {
-    walletCheckedAssignments.push({
-      ...assignment,
-      claim: {
-        ...assignment.claim,
-        feeCharged: 0
-      },
-      recharge: null,
-      feeRefund: null
-    });
-    continue;
-  }
-
-  if (wasAlreadyAccepted) {
-    const feeDifference = Number((requiredFee - existingFee).toFixed(2));
-
-    if (feeDifference === 0) {
-      walletCheckedAssignments.push({
-        ...assignment,
-        claim: {
-          ...assignment.claim,
-          feeCharged: requiredFee
-        },
-        recharge: null,
-        feeRefund: null
-      });
-      continue;
-    }
-
-    const driverWallet = await getDriverWalletSnapshotForFee(claimDriverId);
-    const walletBalance = Number(driverWallet?.walletBalance || 0);
-
-    if (feeDifference > 0 && (!driverWallet || walletBalance < feeDifference)) {
-      removedClaims.push({
-        claim: assignment.claim,
-        reason: `Could not retain booking after amendment because wallet balance is insufficient for the increased fee. Required £${feeDifference.toFixed(2)}, available £${walletBalance.toFixed(2)}.`
-      });
-      continue;
-    }
-
-    const adjustedClaim = {
-      ...assignment.claim,
-      feeCharged: requiredFee
-    };
-
-    if (feeDifference > 0) {
-      const rechargePlan = {
-        driverWallet,
-        amount: feeDifference,
-        bookingGroupId: primary.groupId,
-        reason: "Acceptance fee difference charged after amendment retention."
-      };
-
-      walletCheckedAssignments.push({
-        ...assignment,
-        claim: adjustedClaim,
-        recharge: rechargePlan,
-        feeRefund: null
-      });
-    } else {
-      const refundPlan = {
-        driverWallet,
-        amount: Math.abs(feeDifference),
-        bookingGroupId: primary.groupId,
-        reason: "Acceptance fee difference refunded after amendment retention."
-      };
-
-      walletCheckedAssignments.push({
-        ...assignment,
-        claim: adjustedClaim,
-        recharge: null,
-        feeRefund: refundPlan
-      });
-    }
-
-    continue;
-  }
-
-  const driverWallet = await getDriverWalletSnapshotForFee(claimDriverId);
-  const walletBalance = Number(driverWallet?.walletBalance || 0);
-
-  if (!driverWallet || walletBalance < requiredFee) {
-    removedClaims.push({
-      claim: assignment.claim,
-      reason: `Could not be reassigned after amendment because wallet balance is insufficient. Required £${requiredFee.toFixed(2)}, available £${walletBalance.toFixed(2)}.`,
-      noRefund: true,
-      notificationType: "reassignment_skipped_wallet"
-    });
-    continue;
-  }
-
-  const rechargedClaim = {
-    ...assignment.claim,
-    claimedAt: Date.now(),
-    feeCharged: requiredFee,
-    sourceJobId: assignment.claim.sourceJobId || assignment.claim.jobId || "",
-    jobId: assignment.claim.jobId || assignment.claim.sourceJobId || ""
-  };
-
-  const rechargePlan = {
-    driverWallet,
-    amount: requiredFee,
-    bookingGroupId: primary.groupId,
-    reason: "Acceptance fee charged after amendment reassignment."
-  };
-
-  walletRechargePlans.push(rechargePlan);
-  walletCheckedAssignments.push({
-    ...assignment,
-    claim: rechargedClaim,
-    recharge: rechargePlan,
-    feeRefund: null
-  });
-}
-
-assignments.length = 0;
-walletCheckedAssignments.forEach((assignment) => assignments.push(assignment));
-
     const baseGroupPayload = {
   source: freshParts[0].source || primary.source || "admin",
   createdByDriverId: freshParts[0].createdByDriverId || primary.createdByDriverId || "",
@@ -5092,10 +4699,7 @@ walletCheckedAssignments.forEach((assignment) => assignments.push(assignment));
   creatorCommissionPaidAt: freshParts[0].creatorCommissionPaidAt || primary.creatorCommissionPaidAt || null,
 
   customerName: updated.customerName,
-  customerPhoneOriginal: updated.customerPhoneOriginal ?? primary.customerPhoneOriginal ?? freshParts[0].customerPhoneOriginal ?? "",
-  customerPhonePreferred: updated.customerPhonePreferred ?? primary.customerPhonePreferred ?? freshParts[0].customerPhonePreferred ?? "",
-  usePreferredContact: updated.usePreferredContact ?? primary.usePreferredContact ?? freshParts[0].usePreferredContact ?? false,
-  customerPhoneVerified: primary.customerPhoneVerified ?? freshParts[0].customerPhoneVerified ?? false,
+  customerPhonePreferred: updated.customerPhonePreferred,
   notes: updated.notes,
   pickupAddress: updated.pickupAddress,
   dropoffAddress: updated.dropoffAddress,
@@ -5145,46 +4749,8 @@ freshParts.forEach((oldPart) => {
 });
 
 // 1. Recreate assigned parts for compatible existing claimants
-assignments.forEach(({ claim, part, recharge, feeRefund }) => {
+assignments.forEach(({ claim, part }) => {
   const newRef = doc(collection(db, "jobs"));
-  const rechargeResult = recharge
-    ? buildAcceptanceFeeRechargeTransaction(
-        batch,
-        recharge.driverWallet,
-        recharge.amount,
-        recharge.bookingGroupId,
-        newRef.id,
-        recharge.reason
-      )
-    : null;
-
-  const feeRefundResult = feeRefund
-    ? buildAcceptanceFeeRefundTransaction(
-        batch,
-        feeRefund.driverWallet,
-        feeRefund.amount,
-        feeRefund.bookingGroupId,
-        newRef.id,
-        feeRefund.reason
-      )
-    : null;
-
-  const chargedClaim = rechargeResult
-    ? {
-        ...claim,
-        jobId: newRef.id,
-        sourceJobId: newRef.id,
-        claimedAt: Date.now(),
-        feeCharged: Number(claim.feeCharged ?? rechargeResult.feeAmount ?? 0)
-      }
-    : claim;
-
-  const assignedFeeRaw = Number(chargedClaim.feeCharged ?? 0);
-  const assignedFeeAmount = Number(Number(Number.isFinite(assignedFeeRaw) ? assignedFeeRaw : 0).toFixed(2));
-
-  const assignmentClaimChain = rechargeResult
-    ? [...existingClaims, chargedClaim]
-    : existingClaims;
 
   batch.set(newRef, {
     ...baseGroupPayload,
@@ -5194,18 +4760,15 @@ assignments.forEach(({ claim, part, recharge, feeRefund }) => {
 
     acceptedByDriverId: claim.driverId,
     acceptedDriverName: claim.driverName || "",
+    acceptedDriverEmail: claim.driverEmail || "",
     acceptedDriverType: claim.driverType || "",
     acceptedDriverCapacity: Number(claim.passengerCapacity || 0),
     acceptedDriverPetsAccepted: claim.petsAccepted || "",
 
-    claimChain: assignmentClaimChain,
+    claimChain: existingClaims,
 
     status: "accepted",
-    feeCharged: assignedFeeAmount > 0,
-    acceptanceFeeApplied: assignedFeeAmount > 0,
-    acceptanceFeeAmount: assignedFeeAmount,
-    feeChargedAmount: assignedFeeAmount,
-    feeChargedAt: assignedFeeAmount > 0 ? Number(chargedClaim.claimedAt || Date.now()) : 0,
+    feeCharged: true,
 
     createdAt: serverTimestamp(),
     createdBy: normaliseEmail(auth.currentUser?.email),
@@ -5239,6 +4802,7 @@ rebuilt.parts
 
       acceptedByDriverId: "",
       acceptedDriverName: "",
+      acceptedDriverEmail: "",
       acceptedDriverType: "",
       acceptedDriverCapacity: 0,
       acceptedDriverPetsAccepted: "",
@@ -5247,10 +4811,6 @@ rebuilt.parts
 
       status: "pending",
       feeCharged: false,
-      acceptanceFeeApplied: false,
-      acceptanceFeeAmount: 0,
-      feeChargedAmount: 0,
-      feeChargedAt: 0,
 
       createdAt: serverTimestamp(),
       createdBy: normaliseEmail(auth.currentUser?.email),
@@ -5271,20 +4831,16 @@ await batch.commit();
     for (const item of removedClaims) {
   const claim = item.claim;
 
-  const refundAmount = Number(Number(claim.feeCharged || 0).toFixed(2));
-
-  if (!item.noRefund && refundAmount > 0) {
-    await refundDriverFee(
-      claim.driverId,
-      refundAmount,
-      primary.groupId,
-      item.reason
-    );
-  }
+  await refundDriverFee(
+    claim.driverId,
+    calculateDriverFeeFromJobValue(primary.totalPrice),
+    primary.groupId,
+    item.reason
+  );
 
   await createDriverNotification(claim.driverId, {
-    type: item.notificationType || "job_dethroned",
-    title: item.noRefund ? "Booking not reassigned" : "Booking updated",
+    type: "job_dethroned",
+    title: "Booking updated",
     message: item.reason,
     bookingGroupId: primary.groupId
   });
