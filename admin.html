@@ -2369,6 +2369,114 @@ async function refundDriverFee(driverId, amount, bookingGroupId, reason) {
   });
 }
 
+  async function chargeDriverFee(driverId, amount, bookingGroupId, jobId, reason) {
+  if (!driverId || !Number.isFinite(amount) || amount <= 0) {
+    return {
+      charged: false,
+      balanceBefore: 0,
+      balanceAfter: 0
+    };
+  }
+
+  const driverRef = doc(db, "drivers", driverId);
+  const snap = await getDoc(driverRef);
+
+  if (!snap.exists()) {
+    throw new Error("Could not verify driver wallet before charging amendment fee difference.");
+  }
+
+  const driver = snap.data();
+  const balanceBefore = Number(driver.walletBalance || 0);
+
+  if (balanceBefore < amount) {
+    return {
+      charged: false,
+      insufficient: true,
+      balanceBefore,
+      balanceAfter: balanceBefore
+    };
+  }
+
+  const balanceAfter = Number((balanceBefore - amount).toFixed(2));
+
+  await updateDoc(driverRef, {
+    walletBalance: balanceAfter,
+    updatedAt: serverTimestamp(),
+    lastUpdatedBy: normaliseEmail(auth.currentUser?.email)
+  });
+
+  await addDoc(collection(db, "walletTransactions"), {
+    driverId,
+    bookingGroupId,
+    jobId: jobId || "",
+    type: "acceptance_fee",
+    amount: Number((-amount).toFixed(2)),
+    balanceBefore,
+    balanceAfter,
+    reason,
+    createdAt: serverTimestamp(),
+    createdBy: normaliseEmail(auth.currentUser?.email)
+  });
+
+  return {
+    charged: true,
+    balanceBefore,
+    balanceAfter
+  };
+}
+
+  function isCreatorOwnDriverBooking(primary, claim) {
+  return (
+    String(primary?.source || "").trim().toLowerCase() === "driver" &&
+    String(primary?.createdByDriverId || "").trim() &&
+    String(primary?.createdByDriverId || "").trim() === String(claim?.driverId || "").trim()
+  );
+}
+
+function requiredFeeForAdminRetainedClaim(primary, claim, part) {
+  if (isCreatorOwnDriverBooking(primary, claim)) return 0;
+
+  const vehiclePrice = Number(part?.vehiclePrice || 0);
+  return Number((vehiclePrice * 0.15).toFixed(2));
+}
+
+function buildUpdatedClaimChain(existingClaims, retainedClaim, newJobId, requiredFee) {
+  const retainedDriverId = String(retainedClaim.driverId || "").trim();
+  const cleanedClaims = existingClaims
+    .filter((claim) => String(claim.driverId || "").trim() !== retainedDriverId)
+    .map((claim) => ({
+      driverId: claim.driverId || "",
+      driverName: claim.driverName || "",
+      driverEmail: claim.driverEmail || "",
+      driverType: claim.driverType || "",
+      vehicleNumber: claim.vehicleNumber || "",
+      passengerCapacity: Number(claim.passengerCapacity || 0),
+      petsAccepted: claim.petsAccepted || "",
+      claimedAt: Number(claim.claimedAt || Date.now()),
+      jobId: claim.jobId || "",
+      sourceJobId: claim.sourceJobId || claim.jobId || "",
+      feeCharged: Number(claim.feeCharged || 0)
+    }));
+
+  cleanedClaims.push({
+    driverId: retainedClaim.driverId || "",
+    driverName: retainedClaim.driverName || "",
+    driverEmail: retainedClaim.driverEmail || "",
+    driverType: retainedClaim.driverType || "",
+    vehicleNumber: retainedClaim.vehicleNumber || "",
+    passengerCapacity: Number(retainedClaim.passengerCapacity || 0),
+    petsAccepted: retainedClaim.petsAccepted || "",
+    claimedAt: Date.now(),
+    jobId: newJobId,
+    sourceJobId: newJobId,
+    feeCharged: Number(requiredFee || 0)
+  });
+
+  cleanedClaims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
+
+  return cleanedClaims;
+}
+
 async function getDriverWalletSnapshotForFee(driverId) {
   const cleanDriverId = String(driverId || "").trim();
   if (!cleanDriverId) return null;
@@ -2467,7 +2575,8 @@ function buildAdminFeeOverrideState(primary) {
 }
 
 function getOrderedClaims(parts) {
-  const claims = [];
+  const historicalClaims = [];
+  const currentAcceptedClaims = [];
 
   function getCachedDriver(driverId) {
     const cleanDriverId = String(driverId || "").trim();
@@ -2476,19 +2585,17 @@ function getOrderedClaims(parts) {
     return cachedDrivers.find((driver) => driver.id === cleanDriverId) || null;
   }
 
-  function enrichClaim(rawClaim, part) {
+  function safeClaimFee(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) ? Number(number.toFixed(2)) : 0;
+  }
+
+  function enrichClaim(rawClaim, part, options = {}) {
     const driverId = String(rawClaim.driverId || "").trim();
     const cachedDriver = getCachedDriver(driverId);
-    const isDriverCreatedCreator =
-      String(part?.source || "").toLowerCase() === "driver" &&
-      String(part?.createdByDriverId || "").trim() === driverId;
-
-    const rawFee = Number(
-      rawClaim.feeCharged ??
-      part?.feeChargedAmount ??
-      part?.effectiveFee ??
-      0
-    );
+    const authoritativeFee = options.currentAccepted
+      ? safeClaimFee(part?.feeChargedAmount ?? part?.acceptanceFeeAmount ?? rawClaim.feeCharged ?? 0)
+      : safeClaimFee(rawClaim.feeCharged ?? rawClaim.feeChargedAmount ?? 0);
 
     return {
       ...rawClaim,
@@ -2508,7 +2615,8 @@ function getOrderedClaims(parts) {
       jobId: rawClaim.jobId || part?.id || "",
       sourceJobId: rawClaim.sourceJobId || part?.id || "",
       claimedAt: Number(rawClaim.claimedAt || part?.feeChargedAt || part?.updatedAt?.toMillis?.() || Date.now()),
-      feeCharged: isDriverCreatedCreator ? 0 : (Number.isFinite(rawFee) ? rawFee : 0)
+      feeCharged: authoritativeFee,
+      currentlyAccepted: Boolean(options.currentAccepted)
     };
   }
 
@@ -2517,15 +2625,16 @@ function getOrderedClaims(parts) {
 
     chain.forEach((claim) => {
       if (!claim || !claim.driverId) return;
-      claims.push(enrichClaim(claim, part));
+      historicalClaims.push(enrichClaim(claim, part, { currentAccepted: false }));
     });
 
     if (part.acceptedByDriverId) {
-      claims.push(
+      currentAcceptedClaims.push(
         enrichClaim(
           {
             driverId: part.acceptedByDriverId,
             driverName: part.acceptedDriverName || "",
+            driverEmail: part.acceptedDriverEmail || "",
             driverType: part.acceptedDriverType || "",
             passengerCapacity: Number(part.acceptedDriverCapacity || part.requiredSeats || 0),
             petsAccepted: part.acceptedDriverPetsAccepted || "",
@@ -2533,20 +2642,22 @@ function getOrderedClaims(parts) {
             jobId: part.id,
             sourceJobId: part.id,
             claimedAt: Number(part.feeChargedAt || part.updatedAt?.toMillis?.() || Date.now()),
-            feeCharged: Number(part.feeChargedAmount ?? part.effectiveFee ?? 0)
+            feeCharged: Number(part.feeChargedAmount ?? part.acceptanceFeeAmount ?? 0)
           },
-          part
+          part,
+          { currentAccepted: true }
         )
       );
     }
   });
 
-  claims.sort((a, b) => Number(b.claimedAt || 0) - Number(a.claimedAt || 0));
+  currentAcceptedClaims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
+  historicalClaims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
 
   const seenDrivers = new Set();
   const uniqueClaims = [];
 
-  claims.forEach((claim) => {
+  [...currentAcceptedClaims, ...historicalClaims].forEach((claim) => {
     const driverId = String(claim.driverId || "").trim();
     if (!driverId) return;
     if (seenDrivers.has(driverId)) return;
@@ -2554,8 +2665,6 @@ function getOrderedClaims(parts) {
     seenDrivers.add(driverId);
     uniqueClaims.push(claim);
   });
-
-  uniqueClaims.sort((a, b) => Number(a.claimedAt || 0) - Number(b.claimedAt || 0));
 
   return uniqueClaims;
 }
@@ -4864,6 +4973,7 @@ const claimsForReassignment = [...existingClaims]
 
 for (const claim of claimsForReassignment) {
   let matchedPart = null;
+  let matchedFinancial = null;
   let removalReason = "Booking no longer compatible after amendment";
 
   if (!rebuilt.parts || !rebuilt.parts.length) {
@@ -4929,6 +5039,41 @@ for (const claim of claimsForReassignment) {
       continue;
     }
 
+    const previousPaidFee = Number(claim.feeCharged || 0);
+    const requiredFee = requiredFeeForAdminRetainedClaim(primary, claim, part);
+    const feeDifference = Number((requiredFee - previousPaidFee).toFixed(2));
+
+    if (feeDifference > 0) {
+      const driverSnap = await getDoc(doc(db, "drivers", claim.driverId));
+      const driverBalance = Number(driverSnap.data()?.walletBalance || 0);
+
+      if (!driverSnap.exists() || driverBalance < feeDifference) {
+        removalReason = `Could not retain booking after amendment because wallet balance is insufficient for the increased fee. Required £${feeDifference.toFixed(2)}, available £${driverBalance.toFixed(2)}.`;
+        continue;
+      }
+
+      matchedFinancial = {
+        previousPaidFee,
+        requiredFee,
+        feeDifference,
+        action: "charge_difference"
+      };
+    } else if (feeDifference < 0) {
+      matchedFinancial = {
+        previousPaidFee,
+        requiredFee,
+        feeDifference,
+        action: "refund_difference"
+      };
+    } else {
+      matchedFinancial = {
+        previousPaidFee,
+        requiredFee,
+        feeDifference: 0,
+        action: "none"
+      };
+    }
+
     matchedPart = part;
     break;
   }
@@ -4938,7 +5083,13 @@ for (const claim of claimsForReassignment) {
 
     assignments.push({
       claim,
-      part: matchedPart
+      part: matchedPart,
+      financial: matchedFinancial || {
+        previousPaidFee: Number(claim.feeCharged || 0),
+        requiredFee: requiredFeeForAdminRetainedClaim(primary, claim, matchedPart),
+        feeDifference: 0,
+        action: "none"
+      }
     });
   } else {
     removedClaims.push({
@@ -4960,129 +5111,94 @@ const rebuiltLifecycleBase = [
 ];
 
 const walletCheckedAssignments = [];
-const walletRechargePlans = [];
 
 for (const assignment of assignments) {
   const claimDriverId = String(assignment.claim.driverId || "").trim();
-  const creatorDriverId = String(primary.createdByDriverId || freshParts[0].createdByDriverId || "").trim();
-  const isCreatorClaim = claimDriverId && claimDriverId === creatorDriverId;
-  const wasAlreadyAccepted = currentlyAcceptedDriverIds.has(claimDriverId);
-  const requiredFee = isCreatorClaim ? 0 : Number(calculateDriverFeeFromJobValue(assignment.part.vehiclePrice).toFixed(2));
-  const existingFeeRaw = Number(assignment.claim.feeCharged);
-  const existingFee = Number.isFinite(existingFeeRaw) ? Number(existingFeeRaw.toFixed(2)) : 0;
+  const previousPaidFee = Number(Number(assignment.claim.feeCharged || 0).toFixed(2));
+  const requiredFee = Number(
+    requiredFeeForAdminRetainedClaim(primary, assignment.claim, assignment.part).toFixed(2)
+  );
+  const feeDifference = Number((requiredFee - previousPaidFee).toFixed(2));
 
-  if (isCreatorClaim || requiredFee <= 0) {
+  if (feeDifference > 0) {
+    const driverWallet = await getDriverWalletSnapshotForFee(claimDriverId);
+    const walletBalance = Number(driverWallet?.walletBalance || 0);
+
+    if (!driverWallet || walletBalance < feeDifference) {
+      removedClaims.push({
+        claim: {
+          ...assignment.claim,
+          feeCharged: previousPaidFee
+        },
+        reason: `Could not retain booking after amendment because wallet balance is insufficient for the increased fee. Required £${feeDifference.toFixed(2)}, available £${walletBalance.toFixed(2)}.`,
+        noRefund: previousPaidFee <= 0,
+        notificationType: "job_dethroned"
+      });
+      continue;
+    }
+
     walletCheckedAssignments.push({
       ...assignment,
       claim: {
         ...assignment.claim,
-        feeCharged: 0
+        feeCharged: requiredFee
       },
-      recharge: null,
-      feeRefund: null
-    });
-    continue;
-  }
-
-  if (wasAlreadyAccepted) {
-    const feeDifference = Number((requiredFee - existingFee).toFixed(2));
-
-    if (feeDifference === 0) {
-      walletCheckedAssignments.push({
-        ...assignment,
-        claim: {
-          ...assignment.claim,
-          feeCharged: requiredFee
-        },
-        recharge: null,
-        feeRefund: null
-      });
-      continue;
-    }
-
-    const driverWallet = await getDriverWalletSnapshotForFee(claimDriverId);
-    const walletBalance = Number(driverWallet?.walletBalance || 0);
-
-    if (feeDifference > 0 && (!driverWallet || walletBalance < feeDifference)) {
-      removedClaims.push({
-        claim: assignment.claim,
-        reason: `Could not retain booking after amendment because wallet balance is insufficient for the increased fee. Required £${feeDifference.toFixed(2)}, available £${walletBalance.toFixed(2)}.`
-      });
-      continue;
-    }
-
-    const adjustedClaim = {
-      ...assignment.claim,
-      feeCharged: requiredFee
-    };
-
-    if (feeDifference > 0) {
-      const rechargePlan = {
+      financial: {
+        previousPaidFee,
+        requiredFee,
+        feeDifference,
+        action: "charge_difference"
+      },
+      recharge: {
         driverWallet,
         amount: feeDifference,
         bookingGroupId: primary.groupId,
         reason: "Acceptance fee difference charged after amendment retention."
-      };
+      },
+      refund: null
+    });
 
-      walletCheckedAssignments.push({
-        ...assignment,
-        claim: adjustedClaim,
-        recharge: rechargePlan,
-        feeRefund: null
-      });
-    } else {
-      const refundPlan = {
-        driverWallet,
+    continue;
+  }
+
+  if (feeDifference < 0) {
+    walletCheckedAssignments.push({
+      ...assignment,
+      claim: {
+        ...assignment.claim,
+        feeCharged: requiredFee
+      },
+      financial: {
+        previousPaidFee,
+        requiredFee,
+        feeDifference,
+        action: "refund_difference"
+      },
+      recharge: null,
+      refund: {
         amount: Math.abs(feeDifference),
         bookingGroupId: primary.groupId,
         reason: "Acceptance fee difference refunded after amendment retention."
-      };
-
-      walletCheckedAssignments.push({
-        ...assignment,
-        claim: adjustedClaim,
-        recharge: null,
-        feeRefund: refundPlan
-      });
-    }
-
-    continue;
-  }
-
-  const driverWallet = await getDriverWalletSnapshotForFee(claimDriverId);
-  const walletBalance = Number(driverWallet?.walletBalance || 0);
-
-  if (!driverWallet || walletBalance < requiredFee) {
-    removedClaims.push({
-      claim: assignment.claim,
-      reason: `Could not be reassigned after amendment because wallet balance is insufficient. Required £${requiredFee.toFixed(2)}, available £${walletBalance.toFixed(2)}.`,
-      noRefund: true,
-      notificationType: "reassignment_skipped_wallet"
+      }
     });
+
     continue;
   }
 
-  const rechargedClaim = {
-    ...assignment.claim,
-    claimedAt: Date.now(),
-    feeCharged: requiredFee,
-    sourceJobId: assignment.claim.sourceJobId || assignment.claim.jobId || "",
-    jobId: assignment.claim.jobId || assignment.claim.sourceJobId || ""
-  };
-
-  const rechargePlan = {
-    driverWallet,
-    amount: requiredFee,
-    bookingGroupId: primary.groupId,
-    reason: "Acceptance fee charged after amendment reassignment."
-  };
-
-  walletRechargePlans.push(rechargePlan);
   walletCheckedAssignments.push({
     ...assignment,
-    claim: rechargedClaim,
-    recharge: rechargePlan,
-    feeRefund: null
+    claim: {
+      ...assignment.claim,
+      feeCharged: requiredFee
+    },
+    financial: {
+      previousPaidFee,
+      requiredFee,
+      feeDifference,
+      action: "none"
+    },
+    recharge: null,
+    refund: null
   });
 }
 
@@ -5153,46 +5269,39 @@ freshParts.forEach((oldPart) => {
 });
 
 // 1. Recreate assigned parts for compatible existing claimants
-assignments.forEach(({ claim, part, recharge, feeRefund }) => {
+assignments.forEach(({ claim, part, recharge, financial }) => {
   const newRef = doc(collection(db, "jobs"));
-  const rechargeResult = recharge
-    ? buildAcceptanceFeeRechargeTransaction(
-        batch,
-        recharge.driverWallet,
-        recharge.amount,
-        recharge.bookingGroupId,
-        newRef.id,
-        recharge.reason
-      )
-    : null;
 
-  const feeRefundResult = feeRefund
-    ? buildAcceptanceFeeRefundTransaction(
-        batch,
-        feeRefund.driverWallet,
-        feeRefund.amount,
-        feeRefund.bookingGroupId,
-        newRef.id,
-        feeRefund.reason
-      )
-    : null;
+  if (recharge) {
+    buildAcceptanceFeeRechargeTransaction(
+      batch,
+      recharge.driverWallet,
+      recharge.amount,
+      recharge.bookingGroupId,
+      newRef.id,
+      recharge.reason
+    );
+  }
 
-  const chargedClaim = rechargeResult
-    ? {
-        ...claim,
-        jobId: newRef.id,
-        sourceJobId: newRef.id,
-        claimedAt: Date.now(),
-        feeCharged: Number(claim.feeCharged ?? rechargeResult.feeAmount ?? 0)
-      }
-    : claim;
+  const requiredFee = Number(
+    Number(financial?.requiredFee ?? claim.feeCharged ?? 0).toFixed(2)
+  );
+  const feeApplied = requiredFee > 0;
 
-  const assignedFeeRaw = Number(chargedClaim.feeCharged ?? 0);
-  const assignedFeeAmount = Number(Number(Number.isFinite(assignedFeeRaw) ? assignedFeeRaw : 0).toFixed(2));
+  const activeClaim = {
+    ...claim,
+    jobId: newRef.id,
+    sourceJobId: newRef.id,
+    claimedAt: Date.now(),
+    feeCharged: requiredFee
+  };
 
-  const assignmentClaimChain = rechargeResult
-    ? [...existingClaims, chargedClaim]
-    : existingClaims;
+  const assignmentClaimChain = [
+    ...existingClaims.filter((existingClaim) => {
+      return String(existingClaim.driverId || "").trim() !== String(claim.driverId || "").trim();
+    }),
+    activeClaim
+  ];
 
   batch.set(newRef, {
     ...baseGroupPayload,
@@ -5202,6 +5311,7 @@ assignments.forEach(({ claim, part, recharge, feeRefund }) => {
 
     acceptedByDriverId: claim.driverId,
     acceptedDriverName: claim.driverName || "",
+    acceptedDriverEmail: claim.driverEmail || "",
     acceptedDriverType: claim.driverType || "",
     acceptedDriverCapacity: Number(claim.passengerCapacity || 0),
     acceptedDriverPetsAccepted: claim.petsAccepted || "",
@@ -5209,11 +5319,11 @@ assignments.forEach(({ claim, part, recharge, feeRefund }) => {
     claimChain: assignmentClaimChain,
 
     status: "accepted",
-    feeCharged: assignedFeeAmount > 0,
-    acceptanceFeeApplied: assignedFeeAmount > 0,
-    acceptanceFeeAmount: assignedFeeAmount,
-    feeChargedAmount: assignedFeeAmount,
-    feeChargedAt: assignedFeeAmount > 0 ? Number(chargedClaim.claimedAt || Date.now()) : 0,
+    feeCharged: feeApplied,
+    acceptanceFeeApplied: feeApplied,
+    acceptanceFeeAmount: requiredFee,
+    feeChargedAmount: requiredFee,
+    feeChargedAt: feeApplied ? Number(activeClaim.claimedAt || Date.now()) : 0,
 
     createdAt: serverTimestamp(),
     createdBy: normaliseEmail(auth.currentUser?.email),
@@ -5276,15 +5386,29 @@ rebuilt.parts
 
 await batch.commit();
 
-    for (const item of removedClaims) {
+for (const assignment of assignments) {
+  const refund = assignment.refund;
+
+  if (!refund || !Number.isFinite(refund.amount) || refund.amount <= 0) {
+    continue;
+  }
+
+  await refundDriverFee(
+    assignment.claim.driverId,
+    Number(refund.amount.toFixed(2)),
+    refund.bookingGroupId,
+    refund.reason
+  );
+}
+
+   for (const item of removedClaims) {
   const claim = item.claim;
+  const actualPaidFee = Number(claim.feeCharged || 0);
 
-  const refundAmount = Number(Number(claim.feeCharged || 0).toFixed(2));
-
-  if (!item.noRefund && refundAmount > 0) {
+  if (!item.noRefund && Number.isFinite(actualPaidFee) && actualPaidFee > 0) {
     await refundDriverFee(
       claim.driverId,
-      refundAmount,
+      Number(actualPaidFee.toFixed(2)),
       primary.groupId,
       item.reason
     );
@@ -5296,7 +5420,7 @@ await batch.commit();
     message: item.reason,
     bookingGroupId: primary.groupId
   });
-}
+} 
 
     editMode = false;
 await loadJobs();
