@@ -2434,7 +2434,20 @@ async function refundDriverFee(driverId, amount, bookingGroupId, reason) {
 }
 
 function requiredFeeForAdminRetainedClaim(primary, claim, part) {
-  if (isCreatorOwnDriverBooking(primary, claim)) return 0;
+  const sourceIsDriverCreated = String(primary?.source || "").trim().toLowerCase() === "driver";
+  const creatorDriverId = String(primary?.createdByDriverId || "").trim();
+  const claimDriverId = String(claim?.driverId || "").trim();
+  const existingFee = Number(claim?.feeCharged || 0);
+  const hasReenteredPublicWallAfterCreatorLoss = Boolean(primary?.hasReenteredPublicWallAfterCreatorLoss);
+
+  const creatorFeeExempt =
+    sourceIsDriverCreated &&
+    creatorDriverId &&
+    claimDriverId === creatorDriverId &&
+    !hasReenteredPublicWallAfterCreatorLoss &&
+    existingFee <= 0;
+
+  if (creatorFeeExempt) return 0;
 
   const vehiclePrice = Number(part?.vehiclePrice || 0);
   return Number((vehiclePrice * 0.15).toFixed(2));
