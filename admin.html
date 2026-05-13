@@ -2453,6 +2453,17 @@ function requiredFeeForAdminRetainedClaim(primary, claim, part) {
   return Number((vehiclePrice * 0.15).toFixed(2));
 }
 
+ function getAdminPreviousPaidFeeForRetainedClaim(claim) {
+  const rawFee = Number(claim?.feeCharged || 0);
+  const fee = Number.isFinite(rawFee) ? Number(rawFee.toFixed(2)) : 0;
+
+  if (!Boolean(claim?.currentlyAccepted)) {
+    return 0;
+  }
+
+  return fee;
+}
+
 function buildUpdatedClaimChain(existingClaims, retainedClaim, newJobId, requiredFee) {
   const retainedDriverId = String(retainedClaim.driverId || "").trim();
   const cleanedClaims = existingClaims
@@ -5052,7 +5063,7 @@ for (const claim of claimsForReassignment) {
       continue;
     }
 
-    const previousPaidFee = Number(claim.feeCharged || 0);
+    const previousPaidFee = getAdminPreviousPaidFeeForRetainedClaim(claim);
     const requiredFee = requiredFeeForAdminRetainedClaim(primary, claim, part);
     const feeDifference = Number((requiredFee - previousPaidFee).toFixed(2));
 
@@ -5127,7 +5138,7 @@ const walletCheckedAssignments = [];
 
 for (const assignment of assignments) {
   const claimDriverId = String(assignment.claim.driverId || "").trim();
-  const previousPaidFee = Number(Number(assignment.claim.feeCharged || 0).toFixed(2));
+  const previousPaidFee = getAdminPreviousPaidFeeForRetainedClaim(assignment.claim);
   const requiredFee = Number(
     requiredFeeForAdminRetainedClaim(primary, assignment.claim, assignment.part).toFixed(2)
   );
