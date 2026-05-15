@@ -1856,9 +1856,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
 
   try {
     const rawMiles = await getDrivingDistanceMiles(data.pickupAddress, data.dropoffAddress);
+    const clearDurationMinutes = await getDrivingDurationMinutes(data.pickupAddress, data.dropoffAddress);
     const distanceMiles = applyDistanceBuffer(rawMiles);
     const scheduledAtIso = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
     const scheduledAtMs = new Date(scheduledAtIso).getTime();
+    const clearanceFields = buildClearanceFields(scheduledAtMs, clearDurationMinutes);
 
     const hcPrice = calculateHCPrice(distanceMiles, data.passengerCount, scheduledAtIso);
     const phPrice = calculatePHPrice(distanceMiles, data.passengerCount, scheduledAtIso);
@@ -1911,8 +1913,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
   quotedPriceInitial: liveQuotedPrice,
   quotedPriceCurrent: liveQuotedPrice,
   scheduledAtIso,
-  scheduledAtMs
-};
+  scheduledAtMs,
+  clearDurationMinutes: clearanceFields.clearDurationMinutes,
+  clearedAt: clearanceFields.clearedAt,
+  clearedAtIso: clearanceFields.clearedAtIso
+};;
 
     renderManualQuote(quote);
     return quote;
@@ -1925,8 +1930,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
 
   async function recalculateSinglePartBookingUpdate(primary, updated) {
   const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
+  const clearDurationMinutes = await getDrivingDurationMinutes(updated.pickupAddress, updated.dropoffAddress);
   const distanceMiles = applyDistanceBuffer(rawMiles);
   const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+  const scheduledAtMs = new Date(scheduledAt).getTime();
+  const clearanceFields = buildClearanceFields(scheduledAtMs, clearDurationMinutes);
 
   const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
   const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
@@ -1971,6 +1979,9 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
 
   return {
     scheduledAt,
+    clearDurationMinutes: clearanceFields.clearDurationMinutes,
+    clearedAt: clearanceFields.clearedAt,
+    clearedAtIso: clearanceFields.clearedAtIso,
     distanceMiles: Number(distanceMiles.toFixed(2)),
     hcPrice: Number(hcPrice.toFixed(2)),
     phPrice: Number(phPrice.toFixed(2)),
@@ -1991,8 +2002,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
 
   async function expandBookingToCompound(primary, updated) {
   const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
+  const clearDurationMinutes = await getDrivingDurationMinutes(updated.pickupAddress, updated.dropoffAddress);
   const distanceMiles = applyDistanceBuffer(rawMiles);
   const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
+  const scheduledAtMs = new Date(scheduledAt).getTime();
+  const clearanceFields = buildClearanceFields(scheduledAtMs, clearDurationMinutes);
 
   const activeFleet = getActiveFleet(cachedDrivers);
 
@@ -2043,6 +2057,9 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
 
   return {
     scheduledAt,
+    clearDurationMinutes: clearanceFields.clearDurationMinutes,
+    clearedAt: clearanceFields.clearedAt,
+    clearedAtIso: clearanceFields.clearedAtIso,
     distanceMiles: Number(distanceMiles.toFixed(2)),
     hcPrice: Number(hcPrice.toFixed(2)),
     phPrice: Number(phPrice.toFixed(2)),
@@ -2058,9 +2075,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
 
   async function rebuildBookingGroupFromTotals(booking, updated) {
   const rawMiles = await getDrivingDistanceMiles(updated.pickupAddress, updated.dropoffAddress);
+  const clearDurationMinutes = await getDrivingDurationMinutes(updated.pickupAddress, updated.dropoffAddress);
   const distanceMiles = applyDistanceBuffer(rawMiles);
   const scheduledAtIso = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
   const scheduledAtMs = new Date(scheduledAtIso).getTime();
+  const clearanceFields = buildClearanceFields(scheduledAtMs, clearDurationMinutes);
 
   const activeFleet = getActiveFleet(cachedDrivers);
 
@@ -2116,6 +2135,9 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
   return {
     scheduledAt: scheduledAtMs,
     scheduledAtIso: scheduledAtIso,
+    clearDurationMinutes: clearanceFields.clearDurationMinutes,
+    clearedAt: clearanceFields.clearedAt,
+    clearedAtIso: clearanceFields.clearedAtIso,
     distanceMiles: Number(distanceMiles.toFixed(2)),
     hcPrice: Number(hcPrice.toFixed(2)),
     phPrice: Number(phPrice.toFixed(2)),
@@ -2169,6 +2191,44 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
     minute: "2-digit",
     second: "2-digit"
   });
+}
+
+  function calculateClearedAtMs(scheduledAtMs, clearDurationMinutes) {
+  const start = Number(scheduledAtMs || 0);
+  const duration = Number(clearDurationMinutes || 0);
+
+  if (!Number.isFinite(start) || start <= 0) return 0;
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+
+  return start + (duration * 60 * 1000);
+}
+
+function formatClearedAt(value) {
+  const timestamp = Number(value || 0);
+  if (!timestamp) return "-";
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return `~${date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit"
+  })}`;
+}
+
+function buildClearanceFields(scheduledAtMs, clearDurationMinutes) {
+  const duration = Number(clearDurationMinutes || 0);
+  const clearedAtMs = calculateClearedAtMs(scheduledAtMs, duration);
+
+  return {
+    clearDurationMinutes: duration,
+    clearedAt: clearedAtMs,
+    clearedAtIso: clearedAtMs ? new Date(clearedAtMs).toISOString() : ""
+  };
+}
+
+function getJobClearedAtDisplay(job) {
+  return formatClearedAt(job?.clearedAt);
 }
 
 function renderDriverLocations(locations) {
@@ -3563,6 +3623,9 @@ const basePayload = {
   scheduledTime: data.scheduledTime,
   scheduledAt: scheduledAtMs,
   scheduledAtIso: quote.scheduledAtIso,
+  clearDurationMinutes: Number(quote.clearDurationMinutes || 0),
+  clearedAt: Number(quote.clearedAt || 0),
+  clearedAtIso: quote.clearedAtIso || "",
   petsRequired: data.petsRequired === "yes",
   notes: data.notes,
 
@@ -4580,12 +4643,12 @@ const showClaimCountdown =
                 <div class="job-meta-item">${Number(primary.passengerCount || 0)} passengers</div>
                 <div class="job-meta-item">${escapeHtml(primary.luggageSize || "none")}</div>
                 <div class="job-meta-item">${primary.petsRequired ? "Pets" : "No pets"}</div>
+                <div class="job-meta-item">Cleared at: ${escapeHtml(getJobClearedAtDisplay(primary))}</div>
                 <div class="job-meta-item">HC £${Number(primary.hcPrice || 0).toFixed(2)}</div>
                 <div class="job-meta-item">PH £${Number(primary.phPrice || 0).toFixed(2)}</div>
                 <div class="job-meta-item">Driver: ${driverDisplay}</div>
                 <div class="job-meta-item job-meta-item-wide">Phone: ${escapeHtml(primary.customerPhonePreferred || primary.customerPhoneOriginal || "-")}</div>
               </div>
-            </div>
 
             <div class="job-expanded">
               <div class="job-section-grid">
@@ -4636,6 +4699,8 @@ const showClaimCountdown =
                     Time:
                     <span class="view-field" data-field="scheduledTime">${escapeHtml(primary.scheduledTime || "-")}</span>
                   </div>
+
+                  <div>Cleared at: ${escapeHtml(getJobClearedAtDisplay(primary))}</div>
 
                   <div>
                     Passengers:
