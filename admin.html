@@ -1214,6 +1214,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const realtimeDb = getDatabase(app);
 const provider = new GoogleAuthProvider();
+const CLEARANCE_BUFFER_MINUTES = 8;
 
 let driverMap = null;
 const driverMarkers = {};
@@ -1860,7 +1861,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
     const distanceMiles = applyDistanceBuffer(rawMiles);
     const scheduledAtIso = combineUkDateAndTime(data.scheduledDate, data.scheduledTime);
     const scheduledAtMs = new Date(scheduledAtIso).getTime();
-    const clearanceFields = buildClearanceFields(scheduledAtMs, clearDurationMinutes);
+    const clearanceFields = buildClearanceFields(
+     scheduledAtMs,
+      clearDurationMinutes,
+       data.isAsap === true
+        );
 
     const hcPrice = calculateHCPrice(distanceMiles, data.passengerCount, scheduledAtIso);
     const phPrice = calculatePHPrice(distanceMiles, data.passengerCount, scheduledAtIso);
@@ -1934,7 +1939,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
   const distanceMiles = applyDistanceBuffer(rawMiles);
   const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
   const scheduledAtMs = new Date(scheduledAt).getTime();
-  const clearanceFields = buildClearanceFields(scheduledAtMs, clearDurationMinutes);
+  const clearanceFields = buildClearanceFields(
+    scheduledAtMs,
+     clearDurationMinutes,
+      Boolean(updated.isAsap)
+       );
 
   const hcPrice = calculateHCPrice(distanceMiles, updated.passengerCount, scheduledAt);
   const phPrice = calculatePHPrice(distanceMiles, updated.passengerCount, scheduledAt);
@@ -2006,7 +2015,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
   const distanceMiles = applyDistanceBuffer(rawMiles);
   const scheduledAt = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
   const scheduledAtMs = new Date(scheduledAt).getTime();
-  const clearanceFields = buildClearanceFields(scheduledAtMs, clearDurationMinutes);
+  const clearanceFields = buildClearanceFields(
+    scheduledAtMs,
+    clearDurationMinutes,
+     Boolean(updated.isAsap)
+     );
 
   const activeFleet = getActiveFleet(cachedDrivers);
 
@@ -2079,7 +2092,11 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
   const distanceMiles = applyDistanceBuffer(rawMiles);
   const scheduledAtIso = combineUkDateAndTime(updated.scheduledDate, updated.scheduledTime);
   const scheduledAtMs = new Date(scheduledAtIso).getTime();
-  const clearanceFields = buildClearanceFields(scheduledAtMs, clearDurationMinutes);
+  const clearanceFields = buildClearanceFields(
+    scheduledAtMs,
+     clearDurationMinutes,
+       Boolean(updated.isAsap)
+     );
 
   const activeFleet = getActiveFleet(cachedDrivers);
 
@@ -2193,14 +2210,26 @@ function solveVehiclePlan(passengers, luggageSize, luggageCount, activeDrivers) 
   });
 }
 
-  function calculateClearedAtMs(scheduledAtMs, clearDurationMinutes) {
-  const start = Number(scheduledAtMs || 0);
+  function calculateClearedAtMs(scheduledAtMs, clearDurationMinutes, isAsap = false, driverEtaSetAt = 0, driverEtaMinutes = 0) {
+  const scheduled = Number(scheduledAtMs || 0);
   const duration = Number(clearDurationMinutes || 0);
+  const etaSetAt = Number(driverEtaSetAt || 0);
+  const etaMinutes = Number(driverEtaMinutes || 0);
 
-  if (!Number.isFinite(start) || start <= 0) return 0;
   if (!Number.isFinite(duration) || duration <= 0) return 0;
 
-  return start + (duration * 60 * 1000);
+  let pickupBasis = 0;
+
+  if (isAsap) {
+    if (!Number.isFinite(etaSetAt) || etaSetAt <= 0) return 0;
+    if (!Number.isFinite(etaMinutes) || etaMinutes <= 0) return 0;
+    pickupBasis = etaSetAt + (etaMinutes * 60 * 1000);
+  } else {
+    if (!Number.isFinite(scheduled) || scheduled <= 0) return 0;
+    pickupBasis = scheduled;
+  }
+
+  return pickupBasis + ((duration + CLEARANCE_BUFFER_MINUTES) * 60 * 1000);
 }
 
 function formatClearedAt(value) {
@@ -2216,9 +2245,15 @@ function formatClearedAt(value) {
   })}`;
 }
 
-function buildClearanceFields(scheduledAtMs, clearDurationMinutes) {
+function buildClearanceFields(scheduledAtMs, clearDurationMinutes, isAsap = false, driverEtaSetAt = 0, driverEtaMinutes = 0) {
   const duration = Number(clearDurationMinutes || 0);
-  const clearedAtMs = calculateClearedAtMs(scheduledAtMs, duration);
+  const clearedAtMs = calculateClearedAtMs(
+    scheduledAtMs,
+    duration,
+    isAsap,
+    driverEtaSetAt,
+    driverEtaMinutes
+  );
 
   return {
     clearDurationMinutes: duration,
@@ -2227,8 +2262,61 @@ function buildClearanceFields(scheduledAtMs, clearDurationMinutes) {
   };
 }
 
+function formatShortAdminTime(value) {
+  const timestamp = Number(value || 0);
+  if (!timestamp) return "-";
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function getEstimatedAsapPickupMs(job) {
+  if (!job || !job.isAsap) return 0;
+
+  const etaSetAt = Number(job.driverEtaSetAt || 0);
+  const etaMinutes = Number(job.driverEtaMinutes || 0);
+
+  if (!etaSetAt || !etaMinutes) return 0;
+  return etaSetAt + (etaMinutes * 60 * 1000);
+}
+
 function getJobClearedAtDisplay(job) {
+  if (job?.isAsap && !Number(job?.clearedAt || 0)) {
+    return "ETA required";
+  }
+
   return formatClearedAt(job?.clearedAt);
+}
+
+function getAdminTimingDisplay(job) {
+  if (!job) return "Time: -";
+
+  if (!job.isAsap) {
+    return `Time: ${escapeHtml(job.scheduledDate || "-")} ${escapeHtml(job.scheduledTime || "-")}`;
+  }
+
+  const lines = [];
+  lines.push("Time: ASAP");
+
+  if (Number(job.scheduledAt || 0)) {
+    lines.push(`Requested at: ${escapeHtml(formatShortAdminTime(job.scheduledAt))}`);
+  }
+
+  if (Number(job.driverEtaMinutes || 0) > 0) {
+    lines.push(`Driver ETA: ${Number(job.driverEtaMinutes || 0)} mins`);
+  }
+
+  const estimatedPickup = getEstimatedAsapPickupMs(job);
+  if (estimatedPickup > 0) {
+    lines.push(`Estimated pickup: ~${escapeHtml(formatShortAdminTime(estimatedPickup))}`);
+  }
+
+  return lines.join("<br>");
 }
 
 function renderDriverLocations(locations) {
@@ -4635,6 +4723,7 @@ const showClaimCountdown =
 
             <div class="job-summary job-toggle">
               <div class="job-route">
+                <div class="job-route-line">${getAdminTimingDisplay(primary)}</div>
                 <div class="job-route-line">${escapeHtml(primary.pickupAddress || "")}</div>
                 <div class="job-route-line">${escapeHtml(primary.dropoffAddress || "")}</div>
               </div>
@@ -4695,10 +4784,7 @@ const showClaimCountdown =
                     <span class="view-field" data-field="scheduledDate">${escapeHtml(primary.scheduledDate || "-")}</span>
                   </div>
 
-                  <div>
-                    Time:
-                    <span class="view-field" data-field="scheduledTime">${escapeHtml(primary.scheduledTime || "-")}</span>
-                  </div>
+                  <div>${getAdminTimingDisplay(primary)}</div>
 
                   <div>Cleared at: ${escapeHtml(getJobClearedAtDisplay(primary))}</div>
 
