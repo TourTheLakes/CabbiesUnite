@@ -4550,11 +4550,18 @@ async function loadJobs() {
 
   const activeBookings = [];
 const completedBookings = [];
+const notCarriedOutBookings = [];
 const cancelledBookings = [];
 const failedBookings = [];
 
   filteredBookings.forEach((booking) => {
   const status = String(booking.primary.status || "").toLowerCase();
+  const journeyStatus = String(booking.primary.journeyStatus || "").toLowerCase();
+
+  if (journeyStatus === "not_carried_out" || status === "not_carried_out") {
+    notCarriedOutBookings.push(booking);
+    return;
+  }
 
   if (status === "cancelled") {
     cancelledBookings.push(booking);
@@ -4566,7 +4573,7 @@ const failedBookings = [];
     return;
   }
 
-  if (status === "fulfilled" || status === "completed") {
+  if (status === "fulfilled" || status === "completed" || journeyStatus === "completed") {
     completedBookings.push(booking);
     return;
   }
@@ -4698,9 +4705,11 @@ customerNotifications.forEach((notification) => {
         const total = parts.length;
         const acceptedCount = parts.filter((p) => String(p.status || "").toLowerCase() === "accepted").length;
         const primaryStatus = String(primary.status || "").toLowerCase();
+        const primaryJourneyStatus = String(primary.journeyStatus || "").toLowerCase();
+        const isNotCarriedOut = primaryJourneyStatus === "not_carried_out";
         const isFailed = primaryStatus === "failed";
         const isCancelled = primaryStatus === "cancelled";
-        const isCompleted = ["fulfilled", "completed"].includes(primaryStatus);
+        const isCompleted = ["fulfilled", "completed"].includes(primaryStatus) || primaryJourneyStatus === "completed";
 
         let groupStatus = "Pending";
         if (acceptedCount > 0 && acceptedCount < total) groupStatus = "Partially Accepted";
@@ -4708,6 +4717,7 @@ customerNotifications.forEach((notification) => {
         if (isCancelled) groupStatus = "Cancelled";
         if (isCompleted) groupStatus = "Completed";
         if (isFailed) groupStatus = "Failed";
+        if (isNotCarriedOut) groupStatus = "Not carried out";
 
         const feeAmount = Number(
           primary.feeOverrideApplied
@@ -4760,6 +4770,11 @@ const showClaimCountdown =
                 ${
                   isFailed
                     ? `<span class="pill danger">FAILED</span>`
+                    : ""
+                }
+                ${
+                  isNotCarriedOut
+                    ? `<span class="pill danger">NOT CARRIED OUT</span>`
                     : ""
                 }
               </div>
@@ -4855,6 +4870,11 @@ const showClaimCountdown =
                   <div>Source: ${escapeHtml(primary.source || "-")}</div>
                   <div>ASAP: ${primary.isAsap ? "Yes" : "No"}</div>
                   <div>Failed reason: ${escapeHtml(primary.failedReason || "-")}</div>
+                  ${
+                    String(primary.journeyStatus || "").toLowerCase() === "not_carried_out"
+                      ? `<div class="pill danger" style="width:max-content;">This job was not carried out</div>`
+                      : ""
+                  }
                 </div>
 
                 <div class="job-section">
@@ -4939,6 +4959,7 @@ const showClaimCountdown =
   jobsList.innerHTML = `
   ${buildSection("Active Jobs", activeBookings)}
   ${buildSection("Completed Jobs", completedBookings)}
+  ${buildSection("Not carried out", notCarriedOutBookings)}
   ${buildSection("Cancelled Jobs", cancelledBookings)}
   ${buildSection("Failed Jobs", failedBookings)}
 `;
